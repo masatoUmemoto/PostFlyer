@@ -149,7 +149,7 @@ export const MapView = ({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'https://demotiles.maplibre.org/style.json',
+      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
       center: focus ? [focus.lng, focus.lat] : [137.155, 35.083],
       zoom: focus ? 15 : 14,
       maxZoom: 19,
