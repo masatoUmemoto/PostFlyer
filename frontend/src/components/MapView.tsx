@@ -153,6 +153,7 @@ export const MapView = ({
       center: focus ? [focus.lng, focus.lat] : [137.155, 35.083],
       zoom: focus ? 15 : 14,
       maxZoom: 19,
+      attributionControl: false,
     })
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right')

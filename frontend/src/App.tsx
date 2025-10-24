@@ -211,7 +211,7 @@ function App() {
         <div>
           <h1>PostFlyers Tracker</h1>
           <p className="app__subtitle">
-            ニックネームだけで参加できるリアルタイム軌跡共有
+            ニックネームだけで参加できるチラシ配布軌跡アプリ
           </p>
         </div>
         {isActive ? (
