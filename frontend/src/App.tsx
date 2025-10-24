@@ -391,6 +391,25 @@ function App() {
     [selfPoints],
   )
 
+  const historyContributors = useMemo(() => {
+    if (!historyPoints.length) {
+      return []
+    }
+
+    const counts = historyPoints.reduce<Record<string, number>>(
+      (acc, point) => {
+        const key = point.nickname?.trim() || '投稿者不明'
+        acc[key] = (acc[key] ?? 0) + 1
+        return acc
+      },
+      {},
+    )
+
+    return Object.entries(counts).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )
+  }, [historyPoints])
+
   const showLocationOverlay = locationPermission !== 'granted'
   const locationOverlayDescription = useMemo(() => {
     switch (locationPermission) {
@@ -580,7 +599,19 @@ function App() {
               {isLoadingHistory ? '読み込み中...' : '履歴を取得'}
             </button>
             <div className="history__meta">
-              表示中の点数: {historyPoints.length}
+              <div>表示中の点数: {historyPoints.length}</div>
+              {historyContributors.length ? (
+                <ul className="history__contributors">
+                  {historyContributors.map(([name, count]) => (
+                    <li className="history__contributors-item" key={name}>
+                      <span className="history__contributor-name">{name}</span>
+                      <span className="history__contributor-count">
+                        {count.toLocaleString()}件
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           </div>
 

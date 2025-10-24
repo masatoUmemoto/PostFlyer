@@ -109,6 +109,24 @@ const buildHistoryCollection = (
   })),
 })
 
+const escapeHtml = (value: string) =>
+  String(value).replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;'
+      case '<':
+        return '&lt;'
+      case '>':
+        return '&gt;'
+      case '"':
+        return '&quot;'
+      case "'":
+        return '&#39;'
+      default:
+        return character
+    }
+  })
+
 const ensureSource = (
   map: Map,
   id: string,
@@ -142,6 +160,7 @@ export const MapView = ({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
   const latestHistoryRef = useRef<TrackPoint[]>([])
+  const historyPopupRef = useRef<maplibregl.Popup | null>(null)
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -259,6 +278,8 @@ export const MapView = ({
     mapRef.current = map
 
     return () => {
+      historyPopupRef.current?.remove()
+      historyPopupRef.current = null
       map.remove()
       mapRef.current = null
     }
@@ -347,6 +368,104 @@ export const MapView = ({
       map.off('load', handleLoad)
     }
   }, [history])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) {
+      return
+    }
+
+    const showHistoryPopup = (
+      event: maplibregl.MapLayerMouseEvent & maplibregl.EventData,
+    ) => {
+      const feature = event.features?.[0]
+      if (!feature || feature.geometry?.type !== 'Point') {
+        return
+      }
+
+      const coordinates = (
+        feature.geometry.coordinates as number[]
+      ).slice(0, 2) as [number, number]
+      const nickname = feature.properties?.nickname
+      const timestamp = feature.properties?.ts
+
+      const displayNickname = nickname
+        ? escapeHtml(nickname)
+        : '投稿者不明'
+
+      let timestampLabel = ''
+      if (typeof timestamp === 'string') {
+        const parsed = new Date(timestamp)
+        timestampLabel = Number.isNaN(parsed.getTime())
+          ? escapeHtml(timestamp)
+          : escapeHtml(parsed.toLocaleString())
+      }
+
+      const popup =
+        historyPopupRef.current ??
+        new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 12,
+        })
+
+      popup
+        .setLngLat(coordinates)
+        .setHTML(
+          `<div class="map-popup"><div class="map-popup__name">${displayNickname}</div>${
+            timestampLabel
+              ? `<div class="map-popup__time">${timestampLabel}</div>`
+              : ''
+          }</div>`,
+        )
+        .addTo(map)
+
+      historyPopupRef.current = popup
+    }
+
+    const handleMouseEnter = (
+      event: maplibregl.MapLayerMouseEvent & maplibregl.EventData,
+    ) => {
+      map.getCanvas().style.cursor = 'pointer'
+      showHistoryPopup(event)
+    }
+
+    const handleMouseMove = (
+      event: maplibregl.MapLayerMouseEvent & maplibregl.EventData,
+    ) => {
+      showHistoryPopup(event)
+    }
+
+    const handleMouseLeave = () => {
+      map.getCanvas().style.cursor = ''
+      historyPopupRef.current?.remove()
+      historyPopupRef.current = null
+    }
+
+    const handleLoad = () => {
+      map.on('mouseenter', 'history-points', handleMouseEnter)
+      map.on('mousemove', 'history-points', handleMouseMove)
+      map.on('mouseleave', 'history-points', handleMouseLeave)
+      map.on('click', 'history-points', showHistoryPopup)
+    }
+
+    if (map.isStyleLoaded()) {
+      handleLoad()
+    } else {
+      map.on('load', handleLoad)
+    }
+
+    return () => {
+      map.off('load', handleLoad)
+      map.off('mouseenter', 'history-points', handleMouseEnter)
+      map.off('mousemove', 'history-points', handleMouseMove)
+      map.off('mouseleave', 'history-points', handleMouseLeave)
+      map.off('click', 'history-points', showHistoryPopup)
+      map.getCanvas().style.cursor = ''
+      historyPopupRef.current?.remove()
+      historyPopupRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !containerRef.current) {
