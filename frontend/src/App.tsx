@@ -35,11 +35,11 @@ const isCompactViewport = () => {
 
 const getInitialControlsOpen = () => !isCompactViewport()
 
-const toDateTimeLocal = (date: Date) => {
+const toDateLocal = (date: Date) => {
   const pad = (value: number) => value.toString().padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
     date.getDate(),
-  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+  )}`
 }
 
 const parseStoredSession = (): Session | null => {
@@ -93,11 +93,9 @@ function App() {
   )
 
   const [historyStart, setHistoryStart] = useState(() =>
-    toDateTimeLocal(new Date(Date.now() - 60 * 60 * 1000)),
+    toDateLocal(new Date(Date.now() - 60 * 60 * 1000)),
   )
-  const [historyEnd, setHistoryEnd] = useState(() =>
-    toDateTimeLocal(new Date()),
-  )
+  const [historyEnd, setHistoryEnd] = useState(() => toDateLocal(new Date()))
   const isActive = isSessionActive(session)
   const previousIsActiveRef = useRef(isActive)
 
@@ -229,14 +227,14 @@ function App() {
 
   const loadHistory = useCallback(async () => {
     if (!historyStart || !historyEnd) {
-      setErrorMessage('時間範囲を入力してください。')
+      setErrorMessage('日付範囲を入力してください。')
       return
     }
 
-    const startDate = new Date(historyStart)
-    const endDate = new Date(historyEnd)
-    if (startDate >= endDate) {
-      setErrorMessage('開始時刻は終了時刻より前に設定してください。')
+    const startDate = new Date(`${historyStart}T00:00:00`)
+    const endDate = new Date(`${historyEnd}T23:59:59.999`)
+    if (startDate > endDate) {
+      setErrorMessage('開始日は終了日より前に設定してください。')
       return
     }
 
@@ -362,25 +360,28 @@ function App() {
           )}
 
           <div className="history">
-            <h3>履歴を表示</h3>
+            <h3>プレビューの日付設定</h3>
+            <p className="history__description">
+              履歴プレビューに表示する日付範囲を選択してください。
+            </p>
             <div className="history__inputs">
               <label className="form__label" htmlFor="history-start">
-                開始
+                プレビュー開始日
               </label>
               <input
                 id="history-start"
-                type="datetime-local"
+                type="date"
                 className="form__input"
                 value={historyStart}
                 onChange={(event) => setHistoryStart(event.target.value)}
               />
 
               <label className="form__label" htmlFor="history-end">
-                終了
+                プレビュー終了日
               </label>
               <input
                 id="history-end"
-                type="datetime-local"
+                type="date"
                 className="form__input"
                 value={historyEnd}
                 onChange={(event) => setHistoryEnd(event.target.value)}
