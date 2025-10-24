@@ -5,8 +5,7 @@ backend:
       commands:
         - AMPLIFY_PULL_AMPLIFY='{"projectName":"PostFlyers","envName":"dev","defaultEditor":"code"}'
         - AMPLIFY_PULL_FRONTEND='{"frontend":"javascript","framework":"none","config":{"SourceDir":"frontend/src","DistributionDir":"frontend/dist","BuildCommand":"npm run build --prefix frontend","StartCommand":"npm run dev --prefix frontend"}}'
-        - AMPLIFY_PULL_PROVIDERS=$(printf '{"awscloudformation":{"configLevel":"project","useProfile":false,"accessKeyId":"%s","secretAccessKey":"%s","region":"ap-northeast-1"}}' "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY")
-        - amplify pull --appId d2dpxdlim8zvwd --envName dev --yes --amplify "$AMPLIFY_PULL_AMPLIFY" --frontend "$AMPLIFY_PULL_FRONTEND" --providers "$AMPLIFY_PULL_PROVIDERS"
+        - amplify pull --appId d2dpxdlim8zvwd --envName dev --yes --amplify "$AMPLIFY_PULL_AMPLIFY" --frontend "$AMPLIFY_PULL_FRONTEND"
     build:
       commands:
         - amplify push --yes --allow-destructive-graphql-schema-updates
