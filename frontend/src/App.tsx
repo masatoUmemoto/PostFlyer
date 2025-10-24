@@ -76,6 +76,13 @@ const loadDeviceId = () => {
 const isSessionActive = (session: Session | null) =>
   Boolean(session && !session.endedAt)
 
+type LocationPermissionState =
+  | 'checking'
+  | 'granted'
+  | 'prompt'
+  | 'denied'
+  | 'unsupported'
+
 function App() {
   const [deviceId] = useState(() => loadDeviceId())
   const [session, setSession] = useState<Session | null>(() =>
@@ -91,6 +98,12 @@ function App() {
   const [isControlsOpen, setIsControlsOpen] = useState(() =>
     getInitialControlsOpen(),
   )
+  const [locationPermission, setLocationPermission] =
+    useState<LocationPermissionState>('checking')
+  const [isRequestingLocation, setIsRequestingLocation] = useState(false)
+  const [locationPromptError, setLocationPromptError] = useState<string | null>(
+    null,
+  )
 
   const [historyStart, setHistoryStart] = useState(() =>
     toDateLocal(new Date(Date.now() - 60 * 60 * 1000)),
@@ -103,8 +116,106 @@ function App() {
     ensureAmplifyConfigured()
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      setLocationPermission('unsupported')
+      return
+    }
+
+    if (!('geolocation' in navigator)) {
+      setLocationPermission('unsupported')
+      return
+    }
+
+    let isMounted = true
+    let permissionStatus: PermissionStatus | null = null
+
+    const updateState = (state: PermissionState) => {
+      if (!isMounted) {
+        return
+      }
+      setLocationPermission(state)
+    }
+
+    const permissions = navigator.permissions
+
+    if (permissions && permissions.query) {
+      permissions
+        .query({ name: 'geolocation' as PermissionName })
+        .then((status) => {
+          if (!isMounted) {
+            return
+          }
+          permissionStatus = status
+          updateState(status.state)
+          status.onchange = () => updateState(status.state)
+        })
+        .catch(() => {
+          updateState('prompt')
+        })
+    } else {
+      setLocationPermission('prompt')
+    }
+
+    return () => {
+      isMounted = false
+      if (permissionStatus) {
+        permissionStatus.onchange = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (locationPermission === 'granted' || locationPermission === 'prompt') {
+      setLocationPromptError(null)
+    }
+  }, [locationPermission])
+
   const handleRecorderError = useCallback((message: string) => {
     setErrorMessage(message)
+  }, [])
+
+  const requestLocationAccess = useCallback(() => {
+    if (typeof window === 'undefined' || !('geolocation' in navigator)) {
+      setLocationPermission('unsupported')
+      setLocationPromptError('この端末では位置情報が利用できません。')
+      return
+    }
+
+    setLocationPromptError(null)
+    setIsRequestingLocation(true)
+
+    navigator.geolocation.getCurrentPosition(
+      () => {
+        setIsRequestingLocation(false)
+        setLocationPermission('granted')
+      },
+      (error) => {
+        setIsRequestingLocation(false)
+        if (error.code === error.PERMISSION_DENIED) {
+          setLocationPermission('denied')
+          setLocationPromptError(
+            '位置情報の利用が拒否されました。ブラウザまたは端末の設定から許可してください。',
+          )
+        } else if (error.code === error.POSITION_UNAVAILABLE) {
+          setLocationPromptError(
+            '端末の位置情報サービスが無効になっている可能性があります。GPSを有効にして再試行してください。',
+          )
+        } else if (error.code === error.TIMEOUT) {
+          setLocationPromptError(
+            '位置情報の取得がタイムアウトしました。通信状況を確認のうえ再試行してください。',
+          )
+        } else {
+          setLocationPromptError(
+            '位置情報の取得に失敗しました。時間をおいてから再度お試しください。',
+          )
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+      },
+    )
   }, [])
 
   const {
@@ -115,7 +226,7 @@ function App() {
     flushNow,
   } = useTrackRecorder({
     session,
-    autoStart: true,
+    autoStart: locationPermission === 'granted',
     onError: handleRecorderError,
   })
 
@@ -130,6 +241,12 @@ function App() {
   useEffect(() => {
     persistSession(session)
   }, [session])
+
+  useEffect(() => {
+    if (locationPermission !== 'granted' && isTracking) {
+      stopRecorder()
+    }
+  }, [isTracking, locationPermission, stopRecorder])
 
   useEffect(() => {
     if (!isCompactViewport()) {
@@ -268,6 +385,28 @@ function App() {
     [selfPoints],
   )
 
+  const showLocationOverlay = locationPermission !== 'granted'
+  const locationOverlayDescription = useMemo(() => {
+    switch (locationPermission) {
+      case 'checking':
+        return '位置情報の状態を確認しています…'
+      case 'prompt':
+        return 'このアプリでは現在地を利用します。位置情報の利用を許可してください。'
+      case 'denied':
+        return '位置情報の利用が拒否されています。ブラウザや端末の設定から許可を行ってください。'
+      case 'unsupported':
+        return 'このブラウザまたは端末では位置情報が利用できません。別の環境をご利用ください。'
+      default:
+        return ''
+    }
+  }, [locationPermission])
+  const canRequestLocation =
+    locationPermission === 'prompt' || locationPermission === 'denied'
+  const locationRequestButtonLabel =
+    locationPermission === 'denied'
+      ? '再度許可を試す'
+      : '位置情報の利用を許可する'
+
   const controlsPanelClassName = [
     'panel',
     'panel--controls',
@@ -283,6 +422,46 @@ function App() {
 
   return (
     <div className="app">
+      {showLocationOverlay ? (
+        <div
+          className="location-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-live="assertive"
+        >
+          <div className="location-overlay__card">
+            <h2 className="location-overlay__title">位置情報を有効にしてください</h2>
+            {locationOverlayDescription ? (
+              <p className="location-overlay__description">
+                {locationOverlayDescription}
+              </p>
+            ) : null}
+            {locationPromptError ? (
+              <p className="location-overlay__error">{locationPromptError}</p>
+            ) : null}
+            {canRequestLocation ? (
+              <button
+                type="button"
+                className="button button--primary location-overlay__action"
+                onClick={requestLocationAccess}
+                disabled={isRequestingLocation}
+              >
+                {isRequestingLocation ? '確認中…' : locationRequestButtonLabel}
+              </button>
+            ) : null}
+            {locationPermission === 'denied' ? (
+              <p className="location-overlay__hint">
+                ブラウザの「サイトの設定」から位置情報を許可した後、ページを再読み込みしてください。
+              </p>
+            ) : null}
+            {locationPermission === 'unsupported' ? (
+              <p className="location-overlay__hint">
+                端末の設定でGPSが利用可能かご確認ください。
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <header className="app__header">
         <div>
           <h1>PostFlyers Tracker</h1>
