@@ -153,10 +153,30 @@ export const MapView = ({
       center: focus ? [focus.lng, focus.lat] : [137.155, 35.083],
       zoom: focus ? 15 : 14,
       maxZoom: 19,
+      pitch: 0,
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
       attributionControl: false,
     })
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-right')
+    map.touchZoomRotate.disableRotation()
+    map.addControl(
+      new maplibregl.NavigationControl({
+        visualizePitch: false,
+        showCompass: false,
+      }),
+      'top-right',
+    )
+    map.addControl(
+      new maplibregl.GeolocateControl({
+        positionOptions: {
+          enableHighAccuracy: true,
+        },
+        trackUserLocation: true,
+      }),
+      'top-right',
+    )
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }))
     map.addControl(
       new maplibregl.AttributionControl({
@@ -320,6 +340,24 @@ export const MapView = ({
       map.off('load', handleLoad)
     }
   }, [history])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !containerRef.current) {
+      return
+    }
+
+    if (!('ResizeObserver' in window)) {
+      return
+    }
+
+    const observer = new ResizeObserver(() => {
+      mapRef.current?.resize()
+    })
+
+    observer.observe(containerRef.current)
+
+    return () => observer.disconnect()
+  }, [])
 
   return <div className="map-view" ref={containerRef} />
 }

@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { v4 as uuid } from 'uuid'
 import './App.css'
@@ -16,6 +16,24 @@ import {
 
 const DEVICE_ID_KEY = 'flyers:deviceId'
 const SESSION_KEY = 'flyers:session'
+
+const MOBILE_BREAKPOINT = 880
+
+const isCompactViewport = () => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  if (typeof window.matchMedia === 'function') {
+    return window
+      .matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+      .matches
+  }
+
+  return window.innerWidth < MOBILE_BREAKPOINT
+}
+
+const getInitialControlsOpen = () => !isCompactViewport()
 
 const toDateTimeLocal = (date: Date) => {
   const pad = (value: number) => value.toString().padStart(2, '0')
@@ -70,6 +88,9 @@ function App() {
   const [isEnding, setIsEnding] = useState(false)
   const [historyPoints, setHistoryPoints] = useState<TrackPoint[]>([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
+  const [isControlsOpen, setIsControlsOpen] = useState(() =>
+    getInitialControlsOpen(),
+  )
 
   const [historyStart, setHistoryStart] = useState(() =>
     toDateTimeLocal(new Date(Date.now() - 60 * 60 * 1000)),
@@ -77,6 +98,8 @@ function App() {
   const [historyEnd, setHistoryEnd] = useState(() =>
     toDateTimeLocal(new Date()),
   )
+  const isActive = isSessionActive(session)
+  const previousIsActiveRef = useRef(isActive)
 
   useEffect(() => {
     ensureAmplifyConfigured()
@@ -109,6 +132,46 @@ function App() {
   useEffect(() => {
     persistSession(session)
   }, [session])
+
+  useEffect(() => {
+    if (!isCompactViewport()) {
+      previousIsActiveRef.current = isActive
+      return
+    }
+
+    if (!previousIsActiveRef.current && isActive) {
+      setIsControlsOpen(false)
+    }
+
+    if (previousIsActiveRef.current && !isActive) {
+      setIsControlsOpen(true)
+    }
+
+    previousIsActiveRef.current = isActive
+  }, [isActive])
+
+  useEffect(() => {
+    if (!errorMessage || !isCompactViewport()) {
+      return
+    }
+
+    setIsControlsOpen(true)
+  }, [errorMessage])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleResize = () => {
+      if (!isCompactViewport()) {
+        setIsControlsOpen(true)
+      }
+    }
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const startSession = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -198,12 +261,27 @@ function App() {
     }
   }, [historyEnd, historyStart])
 
+  const toggleControls = useCallback(() => {
+    setIsControlsOpen((value) => !value)
+  }, [])
+
   const activePoint = useMemo(
     () => selfPoints[selfPoints.length - 1] ?? null,
     [selfPoints],
   )
 
-  const isActive = isSessionActive(session)
+  const controlsPanelClassName = [
+    'panel',
+    'panel--controls',
+    isControlsOpen ? 'panel--controls-open' : 'panel--controls-closed',
+  ].join(' ')
+  const panelToggleClassName = [
+    'panel__toggle',
+    isControlsOpen ? 'panel__toggle--open' : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const controlsBodyId = 'controls-panel-body'
 
   return (
     <div className="app">
@@ -226,7 +304,20 @@ function App() {
       </header>
 
       <main className="app__main">
-        <section className="panel">
+        <section className={controlsPanelClassName}>
+          <button
+            type="button"
+            className={panelToggleClassName}
+            onClick={toggleControls}
+            aria-expanded={isControlsOpen}
+            aria-controls={controlsBodyId}
+          >
+            <span className="panel__toggle-grip" aria-hidden="true" />
+            <span className="panel__toggle-label">
+              {isControlsOpen ? 'パネルを閉じる' : '操作メニューを開く'}
+            </span>
+          </button>
+          <div className="panel__content" id={controlsBodyId}>
           <h2>参加</h2>
           {isActive ? (
             <div className="status-box">
@@ -324,6 +415,7 @@ function App() {
                 ? new Date(lastFetchedAt).toLocaleTimeString()
                 : '取得前'}
             </span>
+          </div>
           </div>
         </section>
 
