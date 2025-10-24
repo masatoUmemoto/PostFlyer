@@ -8,13 +8,14 @@ const SLOW_FLUSH_INTERVAL_MS = 60000
 const SPEED_FAST_THRESHOLD_MPS = 5
 const SPEED_SLOW_THRESHOLD_MPS = 3
 const EARTH_RADIUS_M = 6371000
+const SLOW_MOVEMENT_MIN_DISTANCE_M = 25
+const SLOW_MOVEMENT_MIN_INTERVAL_MS = 180000 // ensure we still persist at least once every ~3 min when idle
+
+type LatLng = { readonly latitude: number; readonly longitude: number }
 
 const toRadians = (value: number) => (value * Math.PI) / 180
 
-const getDistanceMeters = (
-  from: GeolocationCoordinates,
-  to: GeolocationCoordinates,
-) => {
+const getDistanceMeters = (from: LatLng, to: LatLng) => {
   const deltaLat = toRadians(to.latitude - from.latitude)
   const deltaLng = toRadians(to.longitude - from.longitude)
   const lat1 = toRadians(from.latitude)
@@ -62,6 +63,7 @@ export const useTrackRecorder = ({
   const watchIdRef = useRef<number | null>(null)
   const isFlushingRef = useRef(false)
   const lastPositionRef = useRef<GeolocationPosition | null>(null)
+  const lastRecordedPointRef = useRef<TrackPoint | null>(null)
 
   const resetRecorder = useCallback(() => {
     setPoints([])
@@ -71,6 +73,7 @@ export const useTrackRecorder = ({
     setMovementState('slow')
     setSpeedMps(null)
     lastPositionRef.current = null
+    lastRecordedPointRef.current = null
   }, [])
 
   const stopWatch = useCallback(() => {
@@ -82,6 +85,7 @@ export const useTrackRecorder = ({
     setMovementState('slow')
     setSpeedMps(null)
     lastPositionRef.current = null
+    lastRecordedPointRef.current = null
   }, [])
 
   useEffect(() => {
@@ -141,22 +145,16 @@ export const useTrackRecorder = ({
         return
       }
 
-      const ts = new Date(position.timestamp || Date.now()).toISOString()
-      const nextPoint: TrackPoint = {
-        trackId: session.sessionId,
-        pointId: uuid(),
-        ts,
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracy: position.coords.accuracy ?? undefined,
-        nickname: session.nickname,
-      }
-
-      bufferRef.current = [...bufferRef.current, nextPoint]
-      setPoints((previous) => [...previous, nextPoint])
-
       const previousPosition = lastPositionRef.current
       lastPositionRef.current = position
+
+      const currentTimestamp =
+        typeof position.timestamp === 'number'
+          ? position.timestamp
+          : Date.now()
+      const ts = new Date(currentTimestamp).toISOString()
+      const { latitude, longitude } = position.coords
+      const accuracy = position.coords.accuracy ?? undefined
 
       const rawSpeed = position.coords.speed
       let derivedSpeed: number | null =
@@ -165,10 +163,6 @@ export const useTrackRecorder = ({
           : null
 
       if (derivedSpeed === null && previousPosition) {
-        const currentTimestamp =
-          typeof position.timestamp === 'number'
-            ? position.timestamp
-            : Date.now()
         const previousTimestamp =
           typeof previousPosition.timestamp === 'number'
             ? previousPosition.timestamp
@@ -184,6 +178,46 @@ export const useTrackRecorder = ({
             derivedSpeed = distance / deltaSeconds
           }
         }
+      }
+
+      const isSlowMovement =
+        derivedSpeed === null || derivedSpeed <= SPEED_SLOW_THRESHOLD_MPS
+
+      let shouldRecord = true
+
+      if (isSlowMovement) {
+        const lastRecorded = lastRecordedPointRef.current
+        if (lastRecorded) {
+          const distanceFromLastRecorded = getDistanceMeters(
+            { latitude: lastRecorded.lat, longitude: lastRecorded.lng },
+            { latitude, longitude },
+          )
+          const timeSinceLastRecorded =
+            currentTimestamp - new Date(lastRecorded.ts).getTime()
+
+          if (
+            distanceFromLastRecorded < SLOW_MOVEMENT_MIN_DISTANCE_M &&
+            timeSinceLastRecorded < SLOW_MOVEMENT_MIN_INTERVAL_MS
+          ) {
+            shouldRecord = false
+          }
+        }
+      }
+
+      if (shouldRecord) {
+        const nextPoint: TrackPoint = {
+          trackId: session.sessionId,
+          pointId: uuid(),
+          ts,
+          lat: latitude,
+          lng: longitude,
+          accuracy,
+          nickname: session.nickname,
+        }
+
+        bufferRef.current = [...bufferRef.current, nextPoint]
+        setPoints((previous) => [...previous, nextPoint])
+        lastRecordedPointRef.current = nextPoint
       }
 
       applySpeedMeasurement(

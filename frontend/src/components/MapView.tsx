@@ -212,9 +212,14 @@ export const MapView = ({
         id: 'self-track-line',
         type: 'line',
         source: SELF_TRACK_SOURCE,
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
         paint: {
           'line-color': '#ff7a1a',
-          'line-width': 4,
+          'line-opacity': 0.45,
+          'line-width': 8,
         },
       })
 
@@ -237,9 +242,14 @@ export const MapView = ({
         type: 'line',
         source: PEERS_SOURCE,
         filter: ['==', ['geometry-type'], 'LineString'],
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
         paint: {
           'line-color': '#ffae55',
-          'line-width': 2,
+          'line-opacity': 0.35,
+          'line-width': 4,
           'line-dasharray': [2, 2],
         },
       })
