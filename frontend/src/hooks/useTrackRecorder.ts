@@ -3,7 +3,31 @@ import { v4 as uuid } from 'uuid'
 import type { Session, TrackPoint, TrackPointInput } from '../amplify/types'
 import { putTrackPoints } from '../services/appsyncService'
 
-const FLUSH_INTERVAL_MS = 15000
+const FAST_FLUSH_INTERVAL_MS = 15000
+const SLOW_FLUSH_INTERVAL_MS = 60000
+const SPEED_FAST_THRESHOLD_MPS = 5
+const SPEED_SLOW_THRESHOLD_MPS = 3
+const EARTH_RADIUS_M = 6371000
+
+const toRadians = (value: number) => (value * Math.PI) / 180
+
+const getDistanceMeters = (
+  from: GeolocationCoordinates,
+  to: GeolocationCoordinates,
+) => {
+  const deltaLat = toRadians(to.latitude - from.latitude)
+  const deltaLng = toRadians(to.longitude - from.longitude)
+  const lat1 = toRadians(from.latitude)
+  const lat2 = toRadians(to.latitude)
+  const sinDeltaLat = Math.sin(deltaLat / 2)
+  const sinDeltaLng = Math.sin(deltaLng / 2)
+
+  const haversine =
+    sinDeltaLat * sinDeltaLat +
+    Math.cos(lat1) * Math.cos(lat2) * sinDeltaLng * sinDeltaLng
+  const arc = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+  return EARTH_RADIUS_M * arc
+}
 
 export interface UseTrackRecorderOptions {
   session: Session | null
@@ -18,6 +42,9 @@ export interface TrackRecorderState {
   start: () => Promise<void>
   stop: () => void
   flushNow: () => Promise<void>
+  movementState: 'slow' | 'fast'
+  flushIntervalMs: number
+  speedMps: number | null
 }
 
 export const useTrackRecorder = ({
@@ -28,16 +55,22 @@ export const useTrackRecorder = ({
   const [points, setPoints] = useState<TrackPoint[]>([])
   const [isTracking, setIsTracking] = useState(false)
   const [lastSyncAt, setLastSyncAt] = useState<number>()
+  const [movementState, setMovementState] = useState<'slow' | 'fast'>('slow')
+  const [speedMps, setSpeedMps] = useState<number | null>(null)
 
   const bufferRef = useRef<TrackPointInput[]>([])
   const watchIdRef = useRef<number | null>(null)
   const isFlushingRef = useRef(false)
+  const lastPositionRef = useRef<GeolocationPosition | null>(null)
 
   const resetRecorder = useCallback(() => {
     setPoints([])
     bufferRef.current = []
     setIsTracking(false)
     setLastSyncAt(undefined)
+    setMovementState('slow')
+    setSpeedMps(null)
+    lastPositionRef.current = null
   }, [])
 
   const stopWatch = useCallback(() => {
@@ -46,6 +79,9 @@ export const useTrackRecorder = ({
       watchIdRef.current = null
     }
     setIsTracking(false)
+    setMovementState('slow')
+    setSpeedMps(null)
+    lastPositionRef.current = null
   }, [])
 
   useEffect(() => {
@@ -82,6 +118,23 @@ export const useTrackRecorder = ({
     }
   }, [onError, session])
 
+  const applySpeedMeasurement = useCallback((speed: number | null) => {
+    setSpeedMps(speed)
+    setMovementState((previous) => {
+      let next = previous
+
+      if (speed === null) {
+        next = 'slow'
+      } else if (speed >= SPEED_FAST_THRESHOLD_MPS) {
+        next = 'fast'
+      } else if (speed <= SPEED_SLOW_THRESHOLD_MPS) {
+        next = 'slow'
+      }
+
+      return next === previous ? previous : next
+    })
+  }, [])
+
   const handlePosition = useCallback(
     (position: GeolocationPosition) => {
       if (!session) {
@@ -101,8 +154,45 @@ export const useTrackRecorder = ({
 
       bufferRef.current = [...bufferRef.current, nextPoint]
       setPoints((previous) => [...previous, nextPoint])
+
+      const previousPosition = lastPositionRef.current
+      lastPositionRef.current = position
+
+      const rawSpeed = position.coords.speed
+      let derivedSpeed: number | null =
+        typeof rawSpeed === 'number' && Number.isFinite(rawSpeed) && rawSpeed >= 0
+          ? rawSpeed
+          : null
+
+      if (derivedSpeed === null && previousPosition) {
+        const currentTimestamp =
+          typeof position.timestamp === 'number'
+            ? position.timestamp
+            : Date.now()
+        const previousTimestamp =
+          typeof previousPosition.timestamp === 'number'
+            ? previousPosition.timestamp
+            : Date.now()
+        const deltaSeconds = (currentTimestamp - previousTimestamp) / 1000
+
+        if (deltaSeconds > 0) {
+          const distance = getDistanceMeters(
+            previousPosition.coords,
+            position.coords,
+          )
+          if (Number.isFinite(distance) && distance >= 0) {
+            derivedSpeed = distance / deltaSeconds
+          }
+        }
+      }
+
+      applySpeedMeasurement(
+        derivedSpeed !== null && Number.isFinite(derivedSpeed)
+          ? derivedSpeed
+          : null,
+      )
     },
-    [session],
+    [applySpeedMeasurement, session],
   )
 
   const handleError = useCallback(
@@ -157,6 +247,11 @@ export const useTrackRecorder = ({
     void flushNow()
   }, [flushNow, stopWatch])
 
+  const flushIntervalMs =
+    movementState === 'fast'
+      ? FAST_FLUSH_INTERVAL_MS
+      : SLOW_FLUSH_INTERVAL_MS
+
   useEffect(() => {
     if (!session || !autoStart) {
       return
@@ -172,13 +267,13 @@ export const useTrackRecorder = ({
 
     const id = window.setInterval(() => {
       void flushNow()
-    }, FLUSH_INTERVAL_MS)
+    }, flushIntervalMs)
 
     return () => {
       window.clearInterval(id)
       void flushNow()
     }
-  }, [flushNow, isTracking])
+  }, [flushIntervalMs, flushNow, isTracking])
 
   useEffect(() => {
     const handleOnline = () => {
@@ -196,5 +291,8 @@ export const useTrackRecorder = ({
     start,
     stop,
     flushNow,
+    movementState,
+    flushIntervalMs,
+    speedMps,
   }
 }

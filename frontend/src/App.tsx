@@ -16,6 +16,8 @@ import {
 
 const DEVICE_ID_KEY = 'flyers:deviceId'
 const SESSION_KEY = 'flyers:session'
+const FAST_SYNC_INTERVAL_MS = 15000
+const SLOW_SYNC_INTERVAL_MS = 60000
 
 const MOBILE_BREAKPOINT = 880
 
@@ -224,16 +226,20 @@ function App() {
     lastSyncAt,
     stop: stopRecorder,
     flushNow,
+    movementState,
   } = useTrackRecorder({
     session,
     autoStart: locationPermission === 'granted',
     onError: handleRecorderError,
   })
 
+  const liveTrackPollingInterval =
+    movementState === 'fast' ? FAST_SYNC_INTERVAL_MS : SLOW_SYNC_INTERVAL_MS
+
   const { grouped: peerTracks, lastFetchedAt } = useLiveTracks({
     enabled: true,
     trackWindowMinutes: 15,
-    pollingIntervalMs: 15000,
+    pollingIntervalMs: liveTrackPollingInterval,
     excludeTrackId: session?.sessionId,
     onError: handleRecorderError,
   })
