@@ -1,45 +1,53 @@
 /* eslint-disable */
 // this is an auto generated file. This will be overwritten
 
-export const createTodo = /* GraphQL */ `
-  mutation CreateTodo(
-    $input: CreateTodoInput!
-    $condition: ModelTodoConditionInput
+export const createSession = /* GraphQL */ `
+  mutation CreateSession(
+    $input: CreateSessionInput!
+    $condition: ModelSessionConditionInput
   ) {
-    createTodo(input: $input, condition: $condition) {
-      id
-      name
-      description
+    createSession(input: $input, condition: $condition) {
+      sessionId
+      nickname
+      deviceId
+      startedAt
+      endedAt
       createdAt
       updatedAt
       __typename
     }
   }
 `;
-export const updateTodo = /* GraphQL */ `
-  mutation UpdateTodo(
-    $input: UpdateTodoInput!
-    $condition: ModelTodoConditionInput
+export const updateSession = /* GraphQL */ `
+  mutation UpdateSession(
+    $input: UpdateSessionInput!
+    $condition: ModelSessionConditionInput
   ) {
-    updateTodo(input: $input, condition: $condition) {
-      id
-      name
-      description
+    updateSession(input: $input, condition: $condition) {
+      sessionId
+      nickname
+      deviceId
+      startedAt
+      endedAt
       createdAt
       updatedAt
       __typename
     }
   }
 `;
-export const deleteTodo = /* GraphQL */ `
-  mutation DeleteTodo(
-    $input: DeleteTodoInput!
-    $condition: ModelTodoConditionInput
+export const createTrackPoint = /* GraphQL */ `
+  mutation CreateTrackPoint(
+    $input: CreateTrackPointInput!
+    $condition: ModelTrackPointConditionInput
   ) {
-    deleteTodo(input: $input, condition: $condition) {
-      id
-      name
-      description
+    createTrackPoint(input: $input, condition: $condition) {
+      trackId
+      ts
+      pointId
+      lat
+      lng
+      accuracy
+      nickname
       createdAt
       updatedAt
       __typename

@@ -2,7 +2,7 @@
   "version": "1",
   "cognitoConfig": {
     "identityPoolName": "postflyersb76a0b56_identitypool_b76a0b56",
-    "allowUnauthenticatedIdentities": false,
+    "allowUnauthenticatedIdentities": true,
     "resourceNameTruncated": "postflb76a0b56",
     "userPoolName": "postflyersb76a0b56_userpool_b76a0b56",
     "autoVerifiedAttributes": [

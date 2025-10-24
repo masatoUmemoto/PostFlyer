@@ -1,0 +1,29 @@
+type Session
+  @model(
+    queries: { get: "getSession", list: "listSessions" }
+    mutations: { create: "createSession", update: "updateSession", delete: null }
+    subscriptions: null
+  )
+  @auth(rules: [{ allow: public, provider: iam }]) {
+  sessionId: ID! @primaryKey
+  nickname: String!
+  deviceId: String
+  startedAt: AWSDateTime!
+  endedAt: AWSDateTime
+}
+
+type TrackPoint
+  @model(
+    queries: { get: null, list: "listTrackPoints" }
+    mutations: { create: "createTrackPoint", update: null, delete: null }
+    subscriptions: null
+  )
+  @auth(rules: [{ allow: public, provider: iam }]) {
+  trackId: ID! @primaryKey(sortKeyFields: ["ts", "pointId"])
+  ts: AWSDateTime!
+  pointId: ID!
+  lat: Float!
+  lng: Float!
+  accuracy: Float
+  nickname: String!
+}

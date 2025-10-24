@@ -4,8 +4,12 @@
     "apiName": "postflyers",
     "serviceName": "AppSync",
     "defaultAuthType": {
-      "mode": "API_KEY",
-      "expirationTime": 7
-    }
+      "mode": "AWS_IAM"
+    },
+    "conflictResolution": {},
+    "iamConfig": {
+      "unauthenticatedUserRoleName": "amplify-postflyers-dev-6dc6e-unauthRole"
+    },
+    "additionalAuthTypes": []
   }
 }

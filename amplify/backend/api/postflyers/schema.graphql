@@ -1,9 +1,29 @@
-# This "input" configures a global authorization rule to enable public access to
-# all models in this schema. Learn more about authorization rules here: https://docs.amplify.aws/cli/graphql/authorization-rules
-input AMPLIFY { globalAuthRule: AuthRule = { allow: public } } # FOR TESTING ONLY!
+type Session
+  @model(
+    queries: { get: "getSession", list: "listSessions" }
+    mutations: { create: "createSession", update: "updateSession", delete: null }
+    subscriptions: null
+  )
+  @auth(rules: [{ allow: public, provider: identityPool }]) {
+    sessionId: ID! @primaryKey
+    nickname: String!
+    deviceId: String
+    startedAt: AWSDateTime!
+    endedAt: AWSDateTime
+}
 
-type Todo @model {
-  id: ID!
-  name: String!
-  description: String
+type TrackPoint
+  @model(
+    queries: { get: null, list: "listTrackPoints" }
+    mutations: { create: "createTrackPoint", update: null, delete: null }
+    subscriptions: null
+  )
+  @auth(rules: [{ allow: public, provider: identityPool }]) {
+    trackId: ID! @primaryKey(sortKeyFields: ["ts", "pointId"])
+    ts: AWSDateTime!
+    pointId: ID!
+    lat: Float!
+    lng: Float!
+    accuracy: Float
+    nickname: String!
 }
