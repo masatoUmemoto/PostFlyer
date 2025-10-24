@@ -3,7 +3,7 @@ backend:
   phases:
     preBuild:
       commands:
-        - amplify pull --appId d2dpxdlim8zvwd --envName dev --yes --amplify "{ \"envName\": \"dev\", \"appId\": \"d2dpxdlim8zvwd\" }" --frontend "{ \"frontend\": \"javascript\", \"framework\": \"none\", \"config\": { \"SourceDir\": \"src\", \"DistributionDir\": \"dist\", \"BuildCommand\": \"npm run build\", \"StartCommand\": \"npm run start\" } }" --providers "{ \"awscloudformation\": { \"configLevel\": \"project\", \"useProfile\": false, \"accessKeyId\": \"\", \"secretAccessKey\": \"\", \"region\": \"ap-northeast-1\" } }"
+        - amplify pull --appId d2dpxdlim8zvwd --envName dev --yes --amplify "{\"envName\":\"dev\",\"appId\":\"d2dpxdlim8zvwd\"}" --frontend "{\"frontend\":\"javascript\",\"framework\":\"none\",\"config\":{\"SourceDir\":\"src\",\"DistributionDir\":\"dist\",\"BuildCommand\":\"npm run build\",\"StartCommand\":\"npm run start\"}}" --providers "{\"awscloudformation\":{\"configLevel\":\"project\",\"useProfile\":false,\"accessKeyId\":\"\",\"secretAccessKey\":\"\",\"region\":\"ap-northeast-1\"}}"
     build:
       commands:
         - amplify push --yes --allow-destructive-graphql-schema-updates
