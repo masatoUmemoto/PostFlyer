@@ -21,6 +21,13 @@ const INSTALL_DISMISSED_KEY = 'flyers:installDismissed'
 const FAST_SYNC_INTERVAL_MS = 15000
 const SLOW_SYNC_INTERVAL_MS = 60000
 
+const UNKNOWN_NICKNAME = '投稿者不明'
+
+const normalizeNickname = (nickname?: string | null) => {
+  const trimmed = nickname?.trim()
+  return trimmed && trimmed.length ? trimmed : UNKNOWN_NICKNAME
+}
+
 const MOBILE_BREAKPOINT = 880
 
 const isCompactViewport = () => {
@@ -98,6 +105,9 @@ function App() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isEnding, setIsEnding] = useState(false)
   const [historyPoints, setHistoryPoints] = useState<TrackPoint[]>([])
+  const [selectedHistoryNickname, setSelectedHistoryNickname] = useState<
+    string | null
+  >(null)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [isControlsOpen, setIsControlsOpen] = useState(() =>
     getInitialControlsOpen(),
@@ -455,6 +465,12 @@ function App() {
       const sorted = [...data].sort(
         (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
       )
+      const availableNicknames = new Set(
+        sorted.map((point) => normalizeNickname(point.nickname)),
+      )
+      setSelectedHistoryNickname((current) =>
+        current && availableNicknames.has(current) ? current : null,
+      )
       setHistoryPoints(sorted)
       setStatusMessage('履歴データを読み込みました。')
     } catch (error) {
@@ -481,17 +497,41 @@ function App() {
 
     const counts = historyPoints.reduce<Record<string, number>>(
       (acc, point) => {
-        const key = point.nickname?.trim() || '投稿者不明'
+        const key = normalizeNickname(point.nickname)
         acc[key] = (acc[key] ?? 0) + 1
         return acc
       },
       {},
     )
 
-    return Object.entries(counts).sort(
-      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
-    )
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort(
+        (a, b) =>
+          b.count - a.count || a.name.localeCompare(b.name, 'ja'),
+      )
   }, [historyPoints])
+
+  const filteredHistoryPoints = useMemo(() => {
+    if (!selectedHistoryNickname) {
+      return historyPoints
+    }
+    return historyPoints.filter(
+      (point) => normalizeNickname(point.nickname) === selectedHistoryNickname,
+    )
+  }, [historyPoints, selectedHistoryNickname])
+
+  const historySelectionLabel = selectedHistoryNickname ?? 'すべて'
+
+  const handleContributorSelect = useCallback((name: string) => {
+    setSelectedHistoryNickname((current) =>
+      current === name ? null : name,
+    )
+  }, [])
+
+  const handleShowAllHistory = useCallback(() => {
+    setSelectedHistoryNickname(null)
+  }, [])
 
   const showLocationOverlay = locationPermission !== 'granted'
   const locationOverlayDescription = useMemo(() => {
@@ -720,17 +760,45 @@ function App() {
               {isLoadingHistory ? '読み込み中...' : '履歴を取得'}
             </button>
             <div className="history__meta">
-              <div>表示中の点数: {historyPoints.length}</div>
+              <div>
+                表示中の点数: {filteredHistoryPoints.length.toLocaleString()}
+              </div>
+              <div>表示対象: {historySelectionLabel}</div>
               {historyContributors.length ? (
                 <ul className="history__contributors">
-                  {historyContributors.map(([name, count]) => (
-                    <li className="history__contributors-item" key={name}>
-                      <span className="history__contributor-name">{name}</span>
-                      <span className="history__contributor-count">
-                        {count.toLocaleString()}件
-                      </span>
-                    </li>
-                  ))}
+                  <li className="history__contributors-item">
+                    <button
+                      type="button"
+                      onClick={handleShowAllHistory}
+                      className={`history__contributor-button${
+                        selectedHistoryNickname === null
+                          ? ' history__contributor-button--active'
+                          : ''
+                      }`}
+                      aria-pressed={selectedHistoryNickname === null}
+                    >
+                      すべて表示
+                    </button>
+                  </li>
+                  {historyContributors.map(({ name }) => {
+                    const isActive = selectedHistoryNickname === name
+                    return (
+                      <li className="history__contributors-item" key={name}>
+                        <button
+                          type="button"
+                          onClick={() => handleContributorSelect(name)}
+                          className={`history__contributor-button${
+                            isActive
+                              ? ' history__contributor-button--active'
+                              : ''
+                          }`}
+                          aria-pressed={isActive}
+                        >
+                          {name}
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
               ) : null}
             </div>
@@ -761,7 +829,7 @@ function App() {
           <MapView
             selfPoints={selfPoints}
             peers={peerTracks}
-            history={historyPoints}
+            history={filteredHistoryPoints}
             focus={activePoint}
           />
         </section>

@@ -13,6 +13,7 @@ const SELF_TRACK_SOURCE = 'self-track'
 const SELF_POINT_SOURCE = 'self-point'
 const PEERS_SOURCE = 'peers'
 const HISTORY_SOURCE = 'history'
+const HISTORY_LINE_SOURCE = 'history-line'
 
 const emptyCollection: FeatureCollection<Geometry> = {
   type: 'FeatureCollection',
@@ -108,6 +109,63 @@ const buildHistoryCollection = (
     },
   })),
 })
+
+const buildHistoryLineCollection = (
+  points: TrackPoint[],
+): FeatureCollection<LineString> => {
+  const grouped = points.reduce<Map<string, TrackPoint[]>>((acc, point) => {
+    const key = point.trackId ?? ''
+    if (!key) {
+      return acc
+    }
+    const bucket = acc.get(key)
+    if (bucket) {
+      bucket.push(point)
+    } else {
+      acc.set(key, [point])
+    }
+    return acc
+  }, new Map())
+
+  const features: Feature<LineString>[] = []
+  grouped.forEach((trackPoints, trackId) => {
+    if (trackPoints.length < 2) {
+      return
+    }
+    const sorted = [...trackPoints].sort(
+      (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
+    )
+    const coordinates = sorted
+      .map((point) => {
+        if (!Number.isFinite(point.lng) || !Number.isFinite(point.lat)) {
+          return null
+        }
+        return [point.lng, point.lat] as [number, number]
+      })
+      .filter(Boolean) as [number, number][]
+
+    if (coordinates.length < 2) {
+      return
+    }
+
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates,
+      },
+      properties: {
+        trackId,
+        nickname: sorted[sorted.length - 1]?.nickname ?? '',
+      },
+    })
+  })
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  }
+}
 
 const escapeHtml = (value: string) =>
   String(value).replace(/[&<>"']/g, (character) => {
@@ -268,6 +326,26 @@ export const MapView = ({
 
       ensureSource(
         map,
+        HISTORY_LINE_SOURCE,
+        buildHistoryLineCollection(latestHistoryRef.current),
+      )
+      map.addLayer({
+        id: 'history-lines',
+        type: 'line',
+        source: HISTORY_LINE_SOURCE,
+        layout: {
+          'line-cap': 'round',
+          'line-join': 'round',
+        },
+        paint: {
+          'line-color': '#ff9444',
+          'line-opacity': 0.4,
+          'line-width': 3,
+        },
+      })
+
+      ensureSource(
+        map,
         HISTORY_SOURCE,
         buildHistoryCollection(latestHistoryRef.current),
       )
@@ -363,6 +441,11 @@ export const MapView = ({
     }
 
     const update = () => {
+      ensureSource(
+        map,
+        HISTORY_LINE_SOURCE,
+        buildHistoryLineCollection(history),
+      )
       ensureSource(map, HISTORY_SOURCE, buildHistoryCollection(history))
     }
 
