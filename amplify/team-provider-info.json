@@ -1,0 +1,23 @@
+{
+  "dev": {
+    "awscloudformation": {
+      "AuthRoleName": "amplify-postflyers-dev-6dc6e-authRole",
+      "UnauthRoleArn": "arn:aws:iam::354918364051:role/amplify-postflyers-dev-6dc6e-unauthRole",
+      "AuthRoleArn": "arn:aws:iam::354918364051:role/amplify-postflyers-dev-6dc6e-authRole",
+      "Region": "ap-northeast-1",
+      "DeploymentBucketName": "amplify-postflyers-dev-6dc6e-deployment",
+      "UnauthRoleName": "amplify-postflyers-dev-6dc6e-unauthRole",
+      "StackName": "amplify-postflyers-dev-6dc6e",
+      "StackId": "arn:aws:cloudformation:ap-northeast-1:354918364051:stack/amplify-postflyers-dev-6dc6e/4f332a50-b079-11f0-b6fd-0e6f9eaaecb5",
+      "AmplifyAppId": "d2dpxdlim8zvwd"
+    },
+    "categories": {
+      "auth": {
+        "postflyersb76a0b56": {}
+      },
+      "api": {
+        "postflyers": {}
+      }
+    }
+  }
+}
