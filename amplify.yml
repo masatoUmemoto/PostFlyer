@@ -1,6 +1,9 @@
 version: 1
 backend:
   phases:
+    preBuild:
+      commands:
+        - amplifyPull --appId d2dpxdlim8zvwd --envName dev --yes
     build:
       commands:
         - amplify push --yes --allow-destructive-graphql-schema-updates
