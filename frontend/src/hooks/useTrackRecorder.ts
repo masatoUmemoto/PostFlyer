@@ -109,13 +109,18 @@ export const useTrackRecorder = ({
       return
     }
 
+    const toFlush = [...pending]
+    bufferRef.current = []
+
     isFlushingRef.current = true
     try {
-      await putTrackPoints([...pending])
-      bufferRef.current = []
-      setLastSyncAt(Date.now())
+      await putTrackPoints(toFlush)
+      if (toFlush.length) {
+        setLastSyncAt(Date.now())
+      }
     } catch (error) {
       console.error('[track-recorder] flush failed', error)
+      bufferRef.current = [...toFlush, ...bufferRef.current]
       onError?.('位置情報の送信に失敗しました。通信状況を確認してください。')
     } finally {
       isFlushingRef.current = false

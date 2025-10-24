@@ -184,7 +184,8 @@ function App() {
     toDateLocal(new Date(Date.now() - 60 * 60 * 1000)),
   )
   const [historyEnd, setHistoryEnd] = useState(() => toDateLocal(new Date()))
-  const isActive = isSessionActive(session)
+  const activeSession = isSessionActive(session) ? session : null
+  const isActive = Boolean(activeSession)
   const showInstallBanner =
     !isStandalone && !installDismissed && (canInstall || isIos)
   const installDescription = canInstall
@@ -351,7 +352,7 @@ function App() {
     flushNow,
     movementState,
   } = useTrackRecorder({
-    session,
+    session: activeSession,
     autoStart: locationPermission === 'granted',
     onError: handleRecorderError,
   })
@@ -384,7 +385,7 @@ function App() {
     enabled: true,
     trackWindowMinutes: 15,
     pollingIntervalMs: liveTrackPollingInterval,
-    excludeTrackId: session?.sessionId,
+    excludeTrackId: activeSession?.sessionId,
     onError: handleRecorderError,
   })
 
@@ -469,7 +470,7 @@ function App() {
   )
 
   const endSession = useCallback(async () => {
-    if (!session) {
+    if (!activeSession) {
       return
     }
 
@@ -479,7 +480,7 @@ function App() {
       stopRecorder()
       await flushNow()
       const ended = await endSessionMutation({
-        sessionId: session.sessionId,
+        sessionId: activeSession.sessionId,
         endedAt: new Date().toISOString(),
       })
       setSession(ended)
@@ -490,7 +491,7 @@ function App() {
     } finally {
       setIsEnding(false)
     }
-  }, [flushNow, session, stopRecorder])
+  }, [activeSession, flushNow, stopRecorder])
 
   const loadHistory = useCallback(async () => {
     if (!historyStart || !historyEnd) {
