@@ -7,6 +7,7 @@ import { ensureAmplifyConfigured } from './amplify/client'
 import type { Session, TrackPoint } from './amplify/types'
 import { MapView } from './components/MapView'
 import { useLiveTracks } from './hooks/useLiveTracks'
+import { usePwaInstallPrompt } from './hooks/usePwaInstallPrompt'
 import { useTrackRecorder } from './hooks/useTrackRecorder'
 import {
   createSession,
@@ -16,6 +17,7 @@ import {
 
 const DEVICE_ID_KEY = 'flyers:deviceId'
 const SESSION_KEY = 'flyers:session'
+const INSTALL_DISMISSED_KEY = 'flyers:installDismissed'
 const FAST_SYNC_INTERVAL_MS = 15000
 const SLOW_SYNC_INTERVAL_MS = 60000
 
@@ -106,17 +108,98 @@ function App() {
   const [locationPromptError, setLocationPromptError] = useState<string | null>(
     null,
   )
+  const [installDismissed, setInstallDismissed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    return localStorage.getItem(INSTALL_DISMISSED_KEY) === '1'
+  })
+  const {
+    canInstall,
+    promptInstall,
+    dismiss: dismissInstallPrompt,
+    isStandalone,
+  } = usePwaInstallPrompt()
+  const isIos = useMemo(() => {
+    if (typeof navigator === 'undefined') {
+      return false
+    }
+    return /iphone|ipad|ipod/i.test(navigator.userAgent)
+  }, [])
+  const [isPromptingInstall, setIsPromptingInstall] = useState(false)
+  const persistInstallDismissed = useCallback((value: boolean) => {
+    if (typeof window === 'undefined') {
+      setInstallDismissed(value)
+      return
+    }
+    if (value) {
+      localStorage.setItem(INSTALL_DISMISSED_KEY, '1')
+    } else {
+      localStorage.removeItem(INSTALL_DISMISSED_KEY)
+    }
+    setInstallDismissed(value)
+  }, [])
 
   const [historyStart, setHistoryStart] = useState(() =>
     toDateLocal(new Date(Date.now() - 60 * 60 * 1000)),
   )
   const [historyEnd, setHistoryEnd] = useState(() => toDateLocal(new Date()))
   const isActive = isSessionActive(session)
+  const showInstallBanner =
+    !isStandalone && !installDismissed && (canInstall || isIos)
+  const installDescription = canInstall
+    ? 'インストールするとオフラインでも利用でき、専用アプリのように起動できます。'
+    : '共有メニューから「ホーム画面に追加」を選ぶと、専用アプリのように使えます。'
+  const installHint = !canInstall && isIos
+    ? 'Safariの共有アイコンから「ホーム画面に追加」を選択してください。'
+    : null
   const previousIsActiveRef = useRef(isActive)
 
   useEffect(() => {
     ensureAmplifyConfigured()
   }, [])
+
+  useEffect(() => {
+    if (isStandalone) {
+      persistInstallDismissed(true)
+    }
+  }, [isStandalone, persistInstallDismissed])
+
+  const handleInstallClick = useCallback(async () => {
+    if (!canInstall) {
+      return
+    }
+
+    setIsPromptingInstall(true)
+    setErrorMessage(null)
+    try {
+      const accepted = await promptInstall()
+      if (accepted) {
+        setStatusMessage('ホーム画面アイコンの追加を開始しました。')
+        persistInstallDismissed(true)
+      } else {
+        setStatusMessage('ホーム画面への追加はキャンセルされました。')
+      }
+    } catch (error) {
+      console.error('Failed to prompt install', error)
+      setErrorMessage(
+        'インストールの呼び出しに失敗しました。ブラウザの共有メニューから「ホーム画面に追加」を選択してください。',
+      )
+    } finally {
+      setIsPromptingInstall(false)
+      dismissInstallPrompt()
+    }
+  }, [
+    canInstall,
+    dismissInstallPrompt,
+    persistInstallDismissed,
+    promptInstall,
+  ])
+
+  const handleDismissInstallBanner = useCallback(() => {
+    persistInstallDismissed(true)
+    dismissInstallPrompt()
+  }, [dismissInstallPrompt, persistInstallDismissed])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -486,6 +569,44 @@ function App() {
             ) : null}
           </div>
         </div>
+      ) : null}
+      {showInstallBanner ? (
+        <section
+          className="install-banner"
+          role="region"
+          aria-label="アプリインストールのご案内"
+        >
+          <div className="install-banner__inner">
+            <div className="install-banner__copy">
+              <p className="install-banner__title">
+                ホーム画面に追加してネイティブアプリのように利用
+              </p>
+              <p className="install-banner__description">{installDescription}</p>
+              {installHint ? (
+                <p className="install-banner__hint">{installHint}</p>
+              ) : null}
+            </div>
+            <div className="install-banner__actions">
+              {canInstall ? (
+                <button
+                  type="button"
+                  className="button button--primary install-banner__button"
+                  onClick={handleInstallClick}
+                  disabled={isPromptingInstall}
+                >
+                  {isPromptingInstall ? '確認中…' : 'インストール'}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="install-banner__dismiss"
+                onClick={handleDismissInstallBanner}
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </section>
       ) : null}
       <header className="app__header">
         <div>

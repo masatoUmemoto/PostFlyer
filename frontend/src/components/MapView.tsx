@@ -385,9 +385,7 @@ export const MapView = ({
       return
     }
 
-    const showHistoryPopup = (
-      event: maplibregl.MapLayerMouseEvent & maplibregl.EventData,
-    ) => {
+    const showHistoryPopup = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0]
       if (!feature || feature.geometry?.type !== 'Point') {
         return
@@ -433,16 +431,12 @@ export const MapView = ({
       historyPopupRef.current = popup
     }
 
-    const handleMouseEnter = (
-      event: maplibregl.MapLayerMouseEvent & maplibregl.EventData,
-    ) => {
+    const handleMouseEnter = (event: maplibregl.MapLayerMouseEvent) => {
       map.getCanvas().style.cursor = 'pointer'
       showHistoryPopup(event)
     }
 
-    const handleMouseMove = (
-      event: maplibregl.MapLayerMouseEvent & maplibregl.EventData,
-    ) => {
+    const handleMouseMove = (event: maplibregl.MapLayerMouseEvent) => {
       showHistoryPopup(event)
     }
 
