@@ -141,6 +141,7 @@ export const MapView = ({
 }: MapViewProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
+  const latestHistoryRef = useRef<TrackPoint[]>([])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -236,7 +237,11 @@ export const MapView = ({
         },
       })
 
-      ensureSource(map, HISTORY_SOURCE, buildHistoryCollection([]))
+      ensureSource(
+        map,
+        HISTORY_SOURCE,
+        buildHistoryCollection(latestHistoryRef.current),
+      )
       map.addLayer({
         id: 'history-points',
         type: 'circle',
@@ -319,6 +324,8 @@ export const MapView = ({
   }, [peers])
 
   useEffect(() => {
+    latestHistoryRef.current = history
+
     const map = mapRef.current
     if (!map) {
       return
