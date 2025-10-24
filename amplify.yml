@@ -1,4 +1,17 @@
 version: 1
+backend:
+  phases:
+    build:
+      commands:
+        - amplify push --yes --allow-destructive-graphql-schema-updates
+  artifacts:
+    baseDirectory: amplify
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - amplify/.config/local-env-info.json
+      - amplify/backend/amplify-meta.json
 frontend:
   phases:
     preBuild:
