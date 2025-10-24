@@ -11,8 +11,8 @@ export const createSessionMutation = /* GraphQL */ `
 `
 
 export const endSessionMutation = /* GraphQL */ `
-  mutation EndSession($input: EndSessionInput!) {
-    endSession(input: $input) {
+  mutation EndSession($input: UpdateSessionInput!) {
+    endSession: updateSession(input: $input) {
       sessionId
       nickname
       deviceId
@@ -22,9 +22,9 @@ export const endSessionMutation = /* GraphQL */ `
   }
 `
 
-export const putTrackPointsMutation = /* GraphQL */ `
-  mutation PutTrackPoints($items: [TrackPointInput!]!) {
-    putTrackPoints(items: $items) {
+export const createTrackPointMutation = /* GraphQL */ `
+  mutation CreateTrackPoint($input: CreateTrackPointInput!) {
+    createTrackPoint(input: $input) {
       trackId
       pointId
       ts
@@ -37,41 +37,64 @@ export const putTrackPointsMutation = /* GraphQL */ `
 `
 
 export const listTrackPointsByTimeQuery = /* GraphQL */ `
-  query ListTrackPointsByTime($start: AWSDateTime!, $end: AWSDateTime!, $limit: Int, $nextToken: String) {
-    listTrackPointsByTime(start: $start, end: $end, limit: $limit, nextToken: $nextToken) {
-      trackId
-      pointId
-      ts
-      lat
-      lng
-      accuracy
-      nickname
+  query ListTrackPointsByTime($filter: ModelTrackPointFilterInput, $limit: Int, $nextToken: String) {
+    listTrackPointsByTime: listTrackPoints(
+      filter: $filter
+      limit: $limit
+      nextToken: $nextToken
+    ) {
+      items {
+        trackId
+        pointId
+        ts
+        lat
+        lng
+        accuracy
+        nickname
+      }
+      nextToken
     }
   }
 `
 
 export const listTrackPointsQuery = /* GraphQL */ `
-  query ListTrackPoints($trackId: ID!, $from: AWSDateTime, $to: AWSDateTime, $limit: Int, $nextToken: String) {
-    listTrackPoints(trackId: $trackId, from: $from, to: $to, limit: $limit, nextToken: $nextToken) {
-      trackId
-      pointId
-      ts
-      lat
-      lng
-      accuracy
-      nickname
+  query ListTrackPoints($trackId: ID!, $filter: ModelTrackPointFilterInput, $limit: Int, $nextToken: String, $sortDirection: ModelSortDirection) {
+    listTrackPoints(
+      trackId: $trackId
+      filter: $filter
+      limit: $limit
+      nextToken: $nextToken
+      sortDirection: $sortDirection
+    ) {
+      items {
+        trackId
+        pointId
+        ts
+        lat
+        lng
+        accuracy
+        nickname
+      }
+      nextToken
     }
   }
 `
 
 export const listSessionsByTimeQuery = /* GraphQL */ `
-  query ListSessionsByTime($start: AWSDateTime!, $end: AWSDateTime!, $limit: Int, $nextToken: String) {
-    listSessionsByTime(start: $start, end: $end, limit: $limit, nextToken: $nextToken) {
-      sessionId
-      nickname
-      deviceId
-      startedAt
-      endedAt
+  query ListSessionsByTime($filter: ModelSessionFilterInput, $limit: Int, $nextToken: String) {
+    listSessionsByTime: listSessions(
+      filter: $filter
+      limit: $limit
+      nextToken: $nextToken
+    ) {
+      items {
+        sessionId
+        nickname
+        deviceId
+        startedAt
+        endedAt
+      }
+      nextToken
     }
   }
 `

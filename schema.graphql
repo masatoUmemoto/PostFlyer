@@ -1,0 +1,293 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+type ModelSessionConnection {
+  items: [Session]!
+  nextToken: String
+}
+
+type ModelTrackPointConnection {
+  items: [TrackPoint]!
+  nextToken: String
+}
+
+type Mutation {
+  createSession(condition: ModelSessionConditionInput, input: CreateSessionInput!): Session
+  createTrackPoint(condition: ModelTrackPointConditionInput, input: CreateTrackPointInput!): TrackPoint
+  updateSession(condition: ModelSessionConditionInput, input: UpdateSessionInput!): Session
+}
+
+type Query {
+  getSession(sessionId: ID!): Session
+  listSessions(filter: ModelSessionFilterInput, limit: Int, nextToken: String, sessionId: ID, sortDirection: ModelSortDirection): ModelSessionConnection
+  listTrackPoints(filter: ModelTrackPointFilterInput, limit: Int, nextToken: String, sortDirection: ModelSortDirection, trackId: ID, tsPointId: ModelTrackPointPrimaryCompositeKeyConditionInput): ModelTrackPointConnection
+}
+
+type Session {
+  createdAt: AWSDateTime!
+  deviceId: String
+  endedAt: AWSDateTime
+  nickname: String!
+  sessionId: ID!
+  startedAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+type TrackPoint {
+  accuracy: Float
+  createdAt: AWSDateTime!
+  lat: Float!
+  lng: Float!
+  nickname: String!
+  pointId: ID!
+  trackId: ID!
+  ts: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+enum ModelAttributeTypes {
+  _null
+  binary
+  binarySet
+  bool
+  list
+  map
+  number
+  numberSet
+  string
+  stringSet
+}
+
+enum ModelSortDirection {
+  ASC
+  DESC
+}
+
+input CreateSessionInput {
+  deviceId: String
+  endedAt: AWSDateTime
+  nickname: String!
+  sessionId: ID!
+  startedAt: AWSDateTime!
+}
+
+input CreateTrackPointInput {
+  accuracy: Float
+  lat: Float!
+  lng: Float!
+  nickname: String!
+  pointId: ID!
+  trackId: ID!
+  ts: AWSDateTime!
+}
+
+input ModelBooleanInput {
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  eq: Boolean
+  ne: Boolean
+}
+
+input ModelFloatInput {
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  between: [Float]
+  eq: Float
+  ge: Float
+  gt: Float
+  le: Float
+  lt: Float
+  ne: Float
+}
+
+input ModelIDInput {
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  beginsWith: ID
+  between: [ID]
+  contains: ID
+  eq: ID
+  ge: ID
+  gt: ID
+  le: ID
+  lt: ID
+  ne: ID
+  notContains: ID
+  size: ModelSizeInput
+}
+
+input ModelIntInput {
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  between: [Int]
+  eq: Int
+  ge: Int
+  gt: Int
+  le: Int
+  lt: Int
+  ne: Int
+}
+
+input ModelSessionConditionInput {
+  and: [ModelSessionConditionInput]
+  createdAt: ModelStringInput
+  deviceId: ModelStringInput
+  endedAt: ModelStringInput
+  nickname: ModelStringInput
+  not: ModelSessionConditionInput
+  or: [ModelSessionConditionInput]
+  startedAt: ModelStringInput
+  updatedAt: ModelStringInput
+}
+
+input ModelSessionFilterInput {
+  and: [ModelSessionFilterInput]
+  createdAt: ModelStringInput
+  deviceId: ModelStringInput
+  endedAt: ModelStringInput
+  id: ModelIDInput
+  nickname: ModelStringInput
+  not: ModelSessionFilterInput
+  or: [ModelSessionFilterInput]
+  sessionId: ModelIDInput
+  startedAt: ModelStringInput
+  updatedAt: ModelStringInput
+}
+
+input ModelSizeInput {
+  between: [Int]
+  eq: Int
+  ge: Int
+  gt: Int
+  le: Int
+  lt: Int
+  ne: Int
+}
+
+input ModelStringInput {
+  attributeExists: Boolean
+  attributeType: ModelAttributeTypes
+  beginsWith: String
+  between: [String]
+  contains: String
+  eq: String
+  ge: String
+  gt: String
+  le: String
+  lt: String
+  ne: String
+  notContains: String
+  size: ModelSizeInput
+}
+
+input ModelSubscriptionBooleanInput {
+  eq: Boolean
+  ne: Boolean
+}
+
+input ModelSubscriptionFloatInput {
+  between: [Float]
+  eq: Float
+  ge: Float
+  gt: Float
+  in: [Float]
+  le: Float
+  lt: Float
+  ne: Float
+  notIn: [Float]
+}
+
+input ModelSubscriptionIDInput {
+  beginsWith: ID
+  between: [ID]
+  contains: ID
+  eq: ID
+  ge: ID
+  gt: ID
+  in: [ID]
+  le: ID
+  lt: ID
+  ne: ID
+  notContains: ID
+  notIn: [ID]
+}
+
+input ModelSubscriptionIntInput {
+  between: [Int]
+  eq: Int
+  ge: Int
+  gt: Int
+  in: [Int]
+  le: Int
+  lt: Int
+  ne: Int
+  notIn: [Int]
+}
+
+input ModelSubscriptionStringInput {
+  beginsWith: String
+  between: [String]
+  contains: String
+  eq: String
+  ge: String
+  gt: String
+  in: [String]
+  le: String
+  lt: String
+  ne: String
+  notContains: String
+  notIn: [String]
+}
+
+input ModelTrackPointConditionInput {
+  accuracy: ModelFloatInput
+  and: [ModelTrackPointConditionInput]
+  createdAt: ModelStringInput
+  lat: ModelFloatInput
+  lng: ModelFloatInput
+  nickname: ModelStringInput
+  not: ModelTrackPointConditionInput
+  or: [ModelTrackPointConditionInput]
+  updatedAt: ModelStringInput
+}
+
+input ModelTrackPointFilterInput {
+  accuracy: ModelFloatInput
+  and: [ModelTrackPointFilterInput]
+  createdAt: ModelStringInput
+  id: ModelIDInput
+  lat: ModelFloatInput
+  lng: ModelFloatInput
+  nickname: ModelStringInput
+  not: ModelTrackPointFilterInput
+  or: [ModelTrackPointFilterInput]
+  pointId: ModelIDInput
+  trackId: ModelIDInput
+  ts: ModelStringInput
+  updatedAt: ModelStringInput
+}
+
+input ModelTrackPointPrimaryCompositeKeyConditionInput {
+  beginsWith: ModelTrackPointPrimaryCompositeKeyInput
+  between: [ModelTrackPointPrimaryCompositeKeyInput]
+  eq: ModelTrackPointPrimaryCompositeKeyInput
+  ge: ModelTrackPointPrimaryCompositeKeyInput
+  gt: ModelTrackPointPrimaryCompositeKeyInput
+  le: ModelTrackPointPrimaryCompositeKeyInput
+  lt: ModelTrackPointPrimaryCompositeKeyInput
+}
+
+input ModelTrackPointPrimaryCompositeKeyInput {
+  pointId: ID
+  ts: AWSDateTime
+}
+
+input UpdateSessionInput {
+  deviceId: String
+  endedAt: AWSDateTime
+  nickname: String
+  sessionId: ID!
+  startedAt: AWSDateTime
+}
