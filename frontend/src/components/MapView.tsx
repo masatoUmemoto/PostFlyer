@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import maplibregl, { Map } from 'maplibre-gl'
+import maplibregl from 'maplibre-gl'
 import type {
   Feature,
   FeatureCollection,
@@ -185,8 +185,10 @@ const escapeHtml = (value: string) =>
     }
   })
 
+type MaplibreMap = maplibregl.Map
+
 const ensureSource = (
-  map: Map,
+  map: MaplibreMap,
   id: string,
   data: FeatureCollection | Feature,
 ) => {
@@ -207,6 +209,7 @@ export interface MapViewProps {
   peers: Record<string, TrackPoint[]>
   history: TrackPoint[]
   focus?: TrackPoint | null
+  defaultCenter?: { lat: number; lng: number } | null
 }
 
 export const MapView = ({
@@ -214,9 +217,10 @@ export const MapView = ({
   peers,
   history,
   focus,
+  defaultCenter,
 }: MapViewProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<Map | null>(null)
+  const mapRef = useRef<MaplibreMap | null>(null)
   const latestHistoryRef = useRef<TrackPoint[]>([])
   const historyPopupRef = useRef<maplibregl.Popup | null>(null)
 
@@ -225,11 +229,24 @@ export const MapView = ({
       return
     }
 
+    let initialCenter: [number, number]
+    let initialZoom: number
+    if (focus) {
+      initialCenter = [focus.lng, focus.lat]
+      initialZoom = 15
+    } else if (defaultCenter) {
+      initialCenter = [defaultCenter.lng, defaultCenter.lat]
+      initialZoom = 12
+    } else {
+      initialCenter = [0, 0]
+      initialZoom = 2
+    }
+
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-      center: focus ? [focus.lng, focus.lat] : [137.155, 35.083],
-      zoom: focus ? 15 : 14,
+      center: initialCenter,
+      zoom: initialZoom,
       maxZoom: 19,
       pitch: 0,
       dragRotate: false,
@@ -371,7 +388,7 @@ export const MapView = ({
       map.remove()
       mapRef.current = null
     }
-  }, [focus])
+  }, [defaultCenter, focus])
 
   useEffect(() => {
     const map = mapRef.current
@@ -408,6 +425,42 @@ export const MapView = ({
       map.off('load', handleLoad)
     }
   }, [focus, selfPoints])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || focus || !defaultCenter) {
+      return
+    }
+
+    const target = [defaultCenter.lng, defaultCenter.lat] as [number, number]
+    const currentCenter = map.getCenter()
+    if (
+      Math.abs(currentCenter.lng - target[0]) < 1e-6 &&
+      Math.abs(currentCenter.lat - target[1]) < 1e-6
+    ) {
+      return
+    }
+
+    const desiredZoom = Math.max(map.getZoom(), 12)
+
+    const animateToTarget = () => {
+      map.easeTo({
+        center: target,
+        duration: 800,
+        zoom: desiredZoom,
+      })
+    }
+
+    if (map.isStyleLoaded()) {
+      animateToTarget()
+      return
+    }
+
+    map.once('load', animateToTarget)
+    return () => {
+      map.off('load', animateToTarget)
+    }
+  }, [defaultCenter, focus])
 
   useEffect(() => {
     const map = mapRef.current

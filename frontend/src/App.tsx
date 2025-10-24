@@ -22,6 +22,9 @@ const FAST_SYNC_INTERVAL_MS = 15000
 const SLOW_SYNC_INTERVAL_MS = 60000
 
 const UNKNOWN_NICKNAME = '投稿者不明'
+const LAST_LOCATION_KEY = 'flyers:lastLocation'
+
+type LatLng = { lat: number; lng: number }
 
 const normalizeNickname = (nickname?: string | null) => {
   const trimmed = nickname?.trim()
@@ -123,6 +126,33 @@ function App() {
       return false
     }
     return localStorage.getItem(INSTALL_DISMISSED_KEY) === '1'
+  })
+  const [storedCenter, setStoredCenter] = useState<LatLng | null>(() => {
+    if (typeof window === 'undefined') {
+      return null
+    }
+    try {
+      const raw = window.localStorage.getItem(LAST_LOCATION_KEY)
+      if (!raw) {
+        return null
+      }
+      const parsed = JSON.parse(raw) as unknown
+      if (
+        parsed &&
+        typeof (parsed as { lat?: unknown }).lat === 'number' &&
+        typeof (parsed as { lng?: unknown }).lng === 'number' &&
+        Number.isFinite((parsed as { lat: number }).lat) &&
+        Number.isFinite((parsed as { lng: number }).lng)
+      ) {
+        return {
+          lat: (parsed as { lat: number }).lat,
+          lng: (parsed as { lng: number }).lng,
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load stored map center', error)
+    }
+    return null
   })
   const {
     canInstall,
@@ -325,6 +355,27 @@ function App() {
     autoStart: locationPermission === 'granted',
     onError: handleRecorderError,
   })
+
+  useEffect(() => {
+    if (!selfPoints.length) {
+      return
+    }
+
+    const last = selfPoints[selfPoints.length - 1]
+    const nextCenter: LatLng = { lat: last.lat, lng: last.lng }
+    setStoredCenter(nextCenter)
+
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(
+          LAST_LOCATION_KEY,
+          JSON.stringify(nextCenter),
+        )
+      } catch (error) {
+        console.warn('Failed to persist map center', error)
+      }
+    }
+  }, [selfPoints])
 
   const liveTrackPollingInterval =
     movementState === 'fast' ? FAST_SYNC_INTERVAL_MS : SLOW_SYNC_INTERVAL_MS
@@ -532,6 +583,33 @@ function App() {
   const handleShowAllHistory = useCallback(() => {
     setSelectedHistoryNickname(null)
   }, [])
+
+  const mapDefaultCenter = useMemo<LatLng | null>(() => {
+    if (storedCenter) {
+      return storedCenter
+    }
+
+    const latestFiltered =
+      filteredHistoryPoints[filteredHistoryPoints.length - 1] ?? null
+    if (latestFiltered) {
+      return { lat: latestFiltered.lat, lng: latestFiltered.lng }
+    }
+
+    const latestHistory =
+      historyPoints[historyPoints.length - 1] ?? null
+    if (latestHistory) {
+      return { lat: latestHistory.lat, lng: latestHistory.lng }
+    }
+
+    for (const track of Object.values(peerTracks)) {
+      if (track.length) {
+        const lastPoint = track[track.length - 1]
+        return { lat: lastPoint.lat, lng: lastPoint.lng }
+      }
+    }
+
+    return null
+  }, [filteredHistoryPoints, historyPoints, peerTracks, storedCenter])
 
   const showLocationOverlay = locationPermission !== 'granted'
   const locationOverlayDescription = useMemo(() => {
@@ -831,6 +909,7 @@ function App() {
             peers={peerTracks}
             history={filteredHistoryPoints}
             focus={activePoint}
+            defaultCenter={mapDefaultCenter}
           />
         </section>
       </main>
