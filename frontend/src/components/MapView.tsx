@@ -4,6 +4,11 @@ import type { TrackPoint } from '../amplify/types'
 
 type LatLngLiteral = { lat: number; lng: number }
 
+const TOYOTASHI_STATION_CENTER: LatLngLiteral = {
+  lat: 35.083639,
+  lng: 137.156471,
+}
+
 const hasValidCoordinates = (point?: TrackPoint | null): point is TrackPoint =>
   !!point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
 
@@ -17,45 +22,9 @@ const toLatLngLiteral = (point: TrackPoint): LatLngLiteral => ({
   lng: point.lng,
 })
 
-const escapeHtml = (value: string) =>
-  String(value).replace(/[&<>"']/g, (character) => {
-    switch (character) {
-      case '&':
-        return '&amp;'
-      case '<':
-        return '&lt;'
-      case '>':
-        return '&gt;'
-      case '"':
-        return '&quot;'
-      case "'":
-        return '&#39;'
-      default:
-        return character
-    }
-  })
-
-const buildTimestampLabel = (value: unknown) => {
-  if (typeof value !== 'string') {
-    return ''
-  }
-
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) {
-    return escapeHtml(value)
-  }
-
-  return escapeHtml(parsed.toLocaleString())
-}
-
 interface CameraState {
   center: LatLngLiteral
   zoom: number
-}
-
-interface HistoryMarkerEntry {
-  marker: google.maps.Marker
-  listeners: google.maps.MapsEventListener[]
 }
 
 export interface MapViewProps {
@@ -82,8 +51,6 @@ export const MapView = ({
   const peerPolylinesRef = useRef(new Map<string, google.maps.Polyline>())
   const peerMarkersRef = useRef(new Map<string, google.maps.Marker>())
   const historyPolylinesRef = useRef(new Map<string, google.maps.Polyline>())
-  const historyMarkersRef = useRef<HistoryMarkerEntry[]>([])
-  const historyInfoWindowRef = useRef<google.maps.InfoWindow | null>(null)
   const [mapVersion, setMapVersion] = useState(0)
 
   const normalizedDefaultCenter = useMemo<LatLngLiteral | null>(() => {
@@ -105,8 +72,8 @@ export const MapView = ({
       }
     } else {
       initialCameraRef.current = {
-        center: { lat: 0, lng: 0 },
-        zoom: 2,
+        center: { ...TOYOTASHI_STATION_CENTER },
+        zoom: 12,
       }
     }
   }
@@ -149,7 +116,10 @@ export const MapView = ({
 
         googleMapsRef.current = google.maps
         const camera =
-          initialCameraRef.current ?? { center: { lat: 0, lng: 0 }, zoom: 2 }
+          initialCameraRef.current ?? {
+            center: { ...TOYOTASHI_STATION_CENTER },
+            zoom: 12,
+          }
 
         const map = new google.maps.Map(containerRef.current, {
           center: camera.center,
@@ -171,15 +141,6 @@ export const MapView = ({
 
     return () => {
       cancelled = true
-
-      historyMarkersRef.current.forEach(({ marker, listeners }) => {
-        listeners.forEach((listener) => listener.remove())
-        marker.setMap(null)
-      })
-      historyMarkersRef.current = []
-
-      historyInfoWindowRef.current?.close()
-      historyInfoWindowRef.current = null
 
       peerMarkersRef.current.forEach((marker) => marker.setMap(null))
       peerMarkersRef.current.clear()
@@ -416,77 +377,6 @@ export const MapView = ({
       }
     })
 
-    historyMarkersRef.current.forEach(({ marker, listeners }) => {
-      listeners.forEach((listener) => listener.remove())
-      marker.setMap(null)
-    })
-    historyMarkersRef.current = []
-
-    const infoWindow =
-      historyInfoWindowRef.current ??
-      new googleMaps.InfoWindow({
-        disableAutoPan: true,
-      })
-
-    historyInfoWindowRef.current = infoWindow
-
-    const entries: HistoryMarkerEntry[] = []
-    history.forEach((point) => {
-      if (!hasValidCoordinates(point)) {
-        return
-      }
-
-      const position = toLatLngLiteral(point)
-      const marker = new googleMaps.Marker({
-        position,
-        map,
-        zIndex: 4,
-        icon: {
-          path: googleMaps.SymbolPath.CIRCLE,
-          fillColor: '#ffb86c',
-          fillOpacity: 0.75,
-          strokeColor: '#fff2e4',
-          strokeOpacity: 1,
-          strokeWeight: 1,
-          scale: 5,
-        },
-      })
-
-      const displayNickname = point.nickname
-        ? escapeHtml(point.nickname)
-        : '投稿老E���E'
-      const timestampLabel = buildTimestampLabel(point.ts)
-
-      const show = () => {
-        const html = `<div class="map-popup"><div class="map-popup__name">${displayNickname}</div>${
-          timestampLabel
-            ? `<div class="map-popup__time">${timestampLabel}</div>`
-            : ''
-        }</div>`
-
-        infoWindow.setContent(html)
-        infoWindow.open({
-          anchor: marker,
-          map,
-          shouldFocus: false,
-        })
-      }
-
-      const hide = () => {
-        infoWindow.close()
-      }
-
-      const listeners = [
-        marker.addListener('mouseover', show),
-        marker.addListener('mousemove', show),
-        marker.addListener('mouseout', hide),
-        marker.addListener('click', show),
-      ]
-
-      entries.push({ marker, listeners })
-    })
-
-    historyMarkersRef.current = entries
   }, [history, mapVersion])
 
   useEffect(() => {
