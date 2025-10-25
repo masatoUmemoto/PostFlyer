@@ -1,6 +1,5 @@
 import type { FormEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import 'maplibre-gl/dist/maplibre-gl.css'
 import { v4 as uuid } from 'uuid'
 import './App.css'
 import { ensureAmplifyConfigured } from './amplify/client'

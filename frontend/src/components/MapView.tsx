@@ -1,176 +1,21 @@
-import { useEffect, useRef } from 'react'
-import maplibregl from 'maplibre-gl'
-import type {
-  Feature,
-  FeatureCollection,
-  LineString,
-  Point,
-  Geometry,
-} from 'geojson'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Loader } from '@googlemaps/js-api-loader'
 import type { TrackPoint } from '../amplify/types'
 
-const SELF_TRACK_SOURCE = 'self-track'
-const SELF_POINT_SOURCE = 'self-point'
-const PEERS_SOURCE = 'peers'
-const HISTORY_SOURCE = 'history'
-const HISTORY_LINE_SOURCE = 'history-line'
+type LatLngLiteral = { lat: number; lng: number }
 
-const emptyCollection: FeatureCollection<Geometry> = {
-  type: 'FeatureCollection',
-  features: [],
-}
+const hasValidCoordinates = (point?: TrackPoint | null): point is TrackPoint =>
+  !!point && Number.isFinite(point.lat) && Number.isFinite(point.lng)
 
-const buildLineFeature = (points: TrackPoint[]): Feature<LineString> => ({
-  type: 'Feature',
-  geometry: {
-    type: 'LineString',
-    coordinates: points.map((point) => [point.lng, point.lat]),
-  },
-  properties: {},
+const hasValidLatLng = (
+  value?: { lat: number; lng: number } | null,
+): value is { lat: number; lng: number } =>
+  !!value && Number.isFinite(value.lat) && Number.isFinite(value.lng)
+
+const toLatLngLiteral = (point: TrackPoint): LatLngLiteral => ({
+  lat: point.lat,
+  lng: point.lng,
 })
-
-const buildSelfCollection = (
-  points: TrackPoint[],
-): FeatureCollection<LineString> => ({
-  type: 'FeatureCollection',
-  features: points.length >= 2 ? [buildLineFeature(points)] : [],
-})
-
-const buildPointCollection = (
-  point: TrackPoint | null,
-): FeatureCollection<Point> =>
-  point
-    ? {
-        type: 'FeatureCollection',
-        features: [
-          {
-            type: 'Feature',
-            geometry: {
-              type: 'Point',
-              coordinates: [point.lng, point.lat],
-            },
-            properties: {
-              nickname: point.nickname,
-            },
-          },
-        ],
-      }
-    : {
-        type: 'FeatureCollection',
-        features: [],
-      }
-
-const buildPeerCollection = (
-  grouped: Record<string, TrackPoint[]>,
-): FeatureCollection<LineString | Point> => ({
-  type: 'FeatureCollection',
-  features: Object.entries(grouped).flatMap(([trackId, points]) => {
-    if (!points.length) {
-      return []
-    }
-
-    const lastPoint = points[points.length - 1]
-    const features: Feature<LineString | Point>[] = []
-
-    if (points.length >= 2) {
-      features.push({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: points.map((point) => [point.lng, point.lat]),
-        },
-        properties: { trackId, nickname: points[0]?.nickname },
-      })
-    }
-
-    const pointFeature: Feature<Point> = {
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [lastPoint.lng, lastPoint.lat],
-      },
-      properties: { trackId, nickname: lastPoint.nickname },
-    }
-
-    features.push(pointFeature)
-
-    return features
-  }),
-})
-
-const buildHistoryCollection = (
-  points: TrackPoint[],
-): FeatureCollection<Point> => ({
-  type: 'FeatureCollection',
-  features: points.map((point) => ({
-    type: 'Feature' as const,
-    geometry: {
-      type: 'Point' as const,
-      coordinates: [point.lng, point.lat],
-    },
-    properties: {
-      nickname: point.nickname,
-      ts: point.ts,
-    },
-  })),
-})
-
-const buildHistoryLineCollection = (
-  points: TrackPoint[],
-): FeatureCollection<LineString> => {
-  const grouped = points.reduce<Map<string, TrackPoint[]>>((acc, point) => {
-    const key = point.trackId ?? ''
-    if (!key) {
-      return acc
-    }
-    const bucket = acc.get(key)
-    if (bucket) {
-      bucket.push(point)
-    } else {
-      acc.set(key, [point])
-    }
-    return acc
-  }, new Map())
-
-  const features: Feature<LineString>[] = []
-  grouped.forEach((trackPoints, trackId) => {
-    if (trackPoints.length < 2) {
-      return
-    }
-    const sorted = [...trackPoints].sort(
-      (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
-    )
-    const coordinates = sorted
-      .map((point) => {
-        if (!Number.isFinite(point.lng) || !Number.isFinite(point.lat)) {
-          return null
-        }
-        return [point.lng, point.lat] as [number, number]
-      })
-      .filter(Boolean) as [number, number][]
-
-    if (coordinates.length < 2) {
-      return
-    }
-
-    features.push({
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates,
-      },
-      properties: {
-        trackId,
-        nickname: sorted[sorted.length - 1]?.nickname ?? '',
-      },
-    })
-  })
-
-  return {
-    type: 'FeatureCollection',
-    features,
-  }
-}
 
 const escapeHtml = (value: string) =>
   String(value).replace(/[&<>"']/g, (character) => {
@@ -190,23 +35,27 @@ const escapeHtml = (value: string) =>
     }
   })
 
-type MaplibreMap = maplibregl.Map
-
-const ensureSource = (
-  map: MaplibreMap,
-  id: string,
-  data: FeatureCollection | Feature,
-) => {
-  const source = map.getSource(id) as maplibregl.GeoJSONSource | undefined
-  if (source) {
-    source.setData(data)
-    return
+const buildTimestampLabel = (value: unknown) => {
+  if (typeof value !== 'string') {
+    return ''
   }
 
-  map.addSource(id, {
-    type: 'geojson',
-    data,
-  })
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return escapeHtml(value)
+  }
+
+  return escapeHtml(parsed.toLocaleString())
+}
+
+interface CameraState {
+  center: LatLngLiteral
+  zoom: number
+}
+
+interface HistoryMarkerEntry {
+  marker: google.maps.Marker
+  listeners: google.maps.MapsEventListener[]
 }
 
 export interface MapViewProps {
@@ -225,404 +74,460 @@ export const MapView = ({
   defaultCenter,
 }: MapViewProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<MaplibreMap | null>(null)
-  const latestHistoryRef = useRef<TrackPoint[]>([])
-  const historyPopupRef = useRef<maplibregl.Popup | null>(null)
-  const initialCameraRef = useRef<{ center: [number, number]; zoom: number } | null>(
-    null,
-  )
+  const mapRef = useRef<google.maps.Map | null>(null)
+  const googleMapsRef = useRef<typeof google.maps | null>(null)
 
+  const selfPolylineRef = useRef<google.maps.Polyline | null>(null)
+  const selfMarkerRef = useRef<google.maps.Marker | null>(null)
+  const peerPolylinesRef = useRef(new Map<string, google.maps.Polyline>())
+  const peerMarkersRef = useRef(new Map<string, google.maps.Marker>())
+  const historyPolylinesRef = useRef(new Map<string, google.maps.Polyline>())
+  const historyMarkersRef = useRef<HistoryMarkerEntry[]>([])
+  const historyInfoWindowRef = useRef<google.maps.InfoWindow | null>(null)
+  const [mapVersion, setMapVersion] = useState(0)
+
+  const normalizedDefaultCenter = useMemo<LatLngLiteral | null>(() => {
+    const value = defaultCenter ?? null
+    return hasValidLatLng(value) ? { lat: value.lat, lng: value.lng } : null
+  }, [defaultCenter])
+
+  const initialCameraRef = useRef<CameraState | null>(null)
   if (!initialCameraRef.current) {
-    if (focus) {
+    if (focus && hasValidCoordinates(focus)) {
       initialCameraRef.current = {
-        center: [focus.lng, focus.lat] as [number, number],
+        center: toLatLngLiteral(focus),
         zoom: 15,
       }
-    } else if (defaultCenter) {
+    } else if (normalizedDefaultCenter) {
       initialCameraRef.current = {
-        center: [defaultCenter.lng, defaultCenter.lat] as [number, number],
+        center: normalizedDefaultCenter,
         zoom: 12,
       }
     } else {
       initialCameraRef.current = {
-        center: [0, 0] as [number, number],
+        center: { lat: 0, lng: 0 },
         zoom: 2,
       }
     }
   }
 
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) {
+    if (!apiKey) {
+      console.error(
+        'VITE_GOOGLE_MAPS_API_KEY is not set. Unable to load Google Maps.',
+      )
+    }
+  }, [apiKey])
+
+  const loader = useMemo(() => {
+    if (!apiKey) {
+      return null
+    }
+
+    return new Loader({
+      apiKey,
+      language: 'ja',
+      region: 'JP',
+      version: 'weekly',
+    })
+  }, [apiKey])
+
+  useEffect(() => {
+    if (!containerRef.current || mapRef.current || !loader) {
       return
     }
 
-    const initialCamera =
-      initialCameraRef.current ?? { center: [0, 0] as [number, number], zoom: 2 }
+    let cancelled = false
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-      center: initialCamera.center,
-      zoom: initialCamera.zoom,
-      maxZoom: 19,
-      pitch: 0,
-      dragRotate: false,
-      pitchWithRotate: false,
-      touchPitch: false,
-      attributionControl: false,
-    })
+    loader
+      .load()
+      .then((google) => {
+        if (cancelled || !containerRef.current) {
+          return
+        }
 
-    map.touchZoomRotate.disableRotation()
-    map.addControl(
-      new maplibregl.NavigationControl({
-        visualizePitch: false,
-        showCompass: false,
-      }),
-      'top-right',
-    )
-    map.addControl(
-      new maplibregl.GeolocateControl({
-        positionOptions: {
-          enableHighAccuracy: true,
-        },
-        trackUserLocation: true,
-      }),
-      'top-right',
-    )
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }))
-    map.addControl(
-      new maplibregl.AttributionControl({
-        compact: true,
-        customAttribution: '© OpenStreetMap contributors © CARTO',
-      }),
-      'bottom-right',
-    )
+        googleMapsRef.current = google.maps
+        const camera =
+          initialCameraRef.current ?? { center: { lat: 0, lng: 0 }, zoom: 2 }
 
-    map.on('load', () => {
-      ensureSource(map, SELF_TRACK_SOURCE, emptyCollection)
-      map.addLayer({
-        id: 'self-track-line',
-        type: 'line',
-        source: SELF_TRACK_SOURCE,
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#ff7a1a',
-          'line-opacity': 0.45,
-          'line-width': 8,
-        },
+        const map = new google.maps.Map(containerRef.current, {
+          center: camera.center,
+          zoom: camera.zoom,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+          zoomControl: true,
+          scaleControl: true,
+          gestureHandling: 'greedy',
+        })
+
+        mapRef.current = map
+        setMapVersion((version) => version + 1)
       })
-
-      ensureSource(map, SELF_POINT_SOURCE, buildPointCollection(null))
-      map.addLayer({
-        id: 'self-track-point',
-        type: 'circle',
-        source: SELF_POINT_SOURCE,
-        paint: {
-          'circle-radius': 6,
-          'circle-color': '#ff6600',
-          'circle-stroke-width': 2,
-          'circle-stroke-color': '#fff2e4',
-        },
+      .catch((error) => {
+        console.error('Failed to load Google Maps', error)
       })
-
-      ensureSource(map, PEERS_SOURCE, buildPeerCollection({}))
-      map.addLayer({
-        id: 'peers-lines',
-        type: 'line',
-        source: PEERS_SOURCE,
-        filter: ['==', ['geometry-type'], 'LineString'],
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#ffae55',
-          'line-opacity': 0.35,
-          'line-width': 4,
-          'line-dasharray': [2, 2],
-        },
-      })
-      map.addLayer({
-        id: 'peers-points',
-        type: 'circle',
-        source: PEERS_SOURCE,
-        filter: ['==', ['geometry-type'], 'Point'],
-        paint: {
-          'circle-radius': 4,
-          'circle-color': '#ffc27d',
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#fff2e4',
-        },
-      })
-
-      ensureSource(
-        map,
-        HISTORY_LINE_SOURCE,
-        buildHistoryLineCollection(latestHistoryRef.current),
-      )
-      map.addLayer({
-        id: 'history-lines',
-        type: 'line',
-        source: HISTORY_LINE_SOURCE,
-        layout: {
-          'line-cap': 'round',
-          'line-join': 'round',
-        },
-        paint: {
-          'line-color': '#ff9444',
-          'line-opacity': 0.4,
-          'line-width': 3,
-        },
-      })
-
-      ensureSource(
-        map,
-        HISTORY_SOURCE,
-        buildHistoryCollection(latestHistoryRef.current),
-      )
-      map.addLayer({
-        id: 'history-points',
-        type: 'circle',
-        source: HISTORY_SOURCE,
-        paint: {
-          'circle-radius': 4,
-          'circle-color': '#ffb86c',
-          'circle-opacity': 0.75,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#fff2e4',
-        },
-      })
-    })
-
-    mapRef.current = map
 
     return () => {
-      historyPopupRef.current?.remove()
-      historyPopupRef.current = null
-      map.remove()
+      cancelled = true
+
+      historyMarkersRef.current.forEach(({ marker, listeners }) => {
+        listeners.forEach((listener) => listener.remove())
+        marker.setMap(null)
+      })
+      historyMarkersRef.current = []
+
+      historyInfoWindowRef.current?.close()
+      historyInfoWindowRef.current = null
+
+      peerMarkersRef.current.forEach((marker) => marker.setMap(null))
+      peerMarkersRef.current.clear()
+
+      peerPolylinesRef.current.forEach((polyline) => polyline.setMap(null))
+      peerPolylinesRef.current.clear()
+
+      historyPolylinesRef.current.forEach((polyline) => polyline.setMap(null))
+      historyPolylinesRef.current.clear()
+
+      selfMarkerRef.current?.setMap(null)
+      selfMarkerRef.current = null
+
+      selfPolylineRef.current?.setMap(null)
+      selfPolylineRef.current = null
+
       mapRef.current = null
+      googleMapsRef.current = null
     }
-  }, [])
+  }, [loader])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map) {
+    const googleMaps = googleMapsRef.current
+    if (!map || !googleMaps) {
       return
     }
 
-    const update = () => {
-      ensureSource(map, SELF_TRACK_SOURCE, buildSelfCollection(selfPoints))
+    const path = selfPoints
+      .filter((point) => hasValidCoordinates(point))
+      .map(toLatLngLiteral)
 
-      ensureSource(
-        map,
-        SELF_POINT_SOURCE,
-        buildPointCollection(selfPoints[selfPoints.length - 1] ?? null),
+    if (path.length >= 2) {
+      const polyline =
+        selfPolylineRef.current ??
+        new googleMaps.Polyline({
+          geodesic: true,
+          strokeColor: '#ff7a1a',
+          strokeOpacity: 0.45,
+          strokeWeight: 8,
+          zIndex: 5,
+        })
+
+      polyline.setPath(path)
+      polyline.setMap(map)
+      selfPolylineRef.current = polyline
+    } else if (selfPolylineRef.current) {
+      selfPolylineRef.current.setMap(null)
+      selfPolylineRef.current = null
+    }
+
+    const lastPoint = path[path.length - 1]
+    if (lastPoint) {
+      const marker =
+        selfMarkerRef.current ??
+        new googleMaps.Marker({
+          zIndex: 10,
+          icon: {
+            path: googleMaps.SymbolPath.CIRCLE,
+            fillColor: '#ff6600',
+            fillOpacity: 1,
+            strokeColor: '#fff2e4',
+            strokeOpacity: 1,
+            strokeWeight: 2,
+            scale: 8,
+          },
+        })
+
+      marker.setPosition(lastPoint)
+      marker.setMap(map)
+      selfMarkerRef.current = marker
+    } else if (selfMarkerRef.current) {
+      selfMarkerRef.current.setMap(null)
+      selfMarkerRef.current = null
+    }
+  }, [selfPoints, mapVersion])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const googleMaps = googleMapsRef.current
+    if (!map || !googleMaps) {
+      return
+    }
+
+    const nextKeys = new Set(Object.keys(peers))
+
+    peerPolylinesRef.current.forEach((polyline, key) => {
+      if (!nextKeys.has(key)) {
+        polyline.setMap(null)
+        peerPolylinesRef.current.delete(key)
+      }
+    })
+
+    peerMarkersRef.current.forEach((marker, key) => {
+      if (!nextKeys.has(key)) {
+        marker.setMap(null)
+        peerMarkersRef.current.delete(key)
+      }
+    })
+
+    nextKeys.forEach((trackId) => {
+      const trackPoints = peers[trackId] ?? []
+      const path = trackPoints
+        .filter((point) => hasValidCoordinates(point))
+        .map(toLatLngLiteral)
+
+      if (path.length >= 2) {
+        const polyline =
+          peerPolylinesRef.current.get(trackId) ??
+          new googleMaps.Polyline({
+            geodesic: true,
+            strokeColor: '#ffae55',
+            strokeOpacity: 0.35,
+            strokeWeight: 4,
+            zIndex: 3,
+            icons: [
+              {
+                icon: {
+                  path: 'M 0,-1 0,1',
+                  strokeOpacity: 1,
+                  strokeColor: '#ffae55',
+                  strokeWeight: 2,
+                },
+                offset: '0',
+                repeat: '16px',
+              },
+            ],
+          })
+
+        polyline.setPath(path)
+        polyline.setMap(map)
+        peerPolylinesRef.current.set(trackId, polyline)
+      } else {
+        const polyline = peerPolylinesRef.current.get(trackId)
+        if (polyline) {
+          polyline.setMap(null)
+          peerPolylinesRef.current.delete(trackId)
+        }
+      }
+
+      const lastPoint = path[path.length - 1]
+      if (lastPoint) {
+        const marker =
+          peerMarkersRef.current.get(trackId) ??
+          new googleMaps.Marker({
+            zIndex: 6,
+            icon: {
+              path: googleMaps.SymbolPath.CIRCLE,
+              fillColor: '#ffc27d',
+              fillOpacity: 1,
+              strokeColor: '#fff2e4',
+              strokeOpacity: 1,
+              strokeWeight: 1,
+              scale: 6,
+            },
+          })
+
+        marker.setPosition(lastPoint)
+        const nickname = trackPoints[trackPoints.length - 1]?.nickname ?? ''
+        marker.setTitle(nickname || undefined)
+        marker.setMap(map)
+        peerMarkersRef.current.set(trackId, marker)
+      } else {
+        const marker = peerMarkersRef.current.get(trackId)
+        if (marker) {
+          marker.setMap(null)
+          peerMarkersRef.current.delete(trackId)
+        }
+      }
+    })
+  }, [peers, mapVersion])
+
+  useEffect(() => {
+    const map = mapRef.current
+    const googleMaps = googleMapsRef.current
+    if (!map || !googleMaps) {
+      return
+    }
+
+    const groupedHistory = history.reduce<Map<string, TrackPoint[]>>(
+      (acc, point) => {
+        if (!point.trackId) {
+          return acc
+        }
+
+        const bucket = acc.get(point.trackId)
+        if (bucket) {
+          bucket.push(point)
+        } else {
+          acc.set(point.trackId, [point])
+        }
+        return acc
+      },
+      new Map(),
+    )
+
+    const nextKeys = new Set(groupedHistory.keys())
+
+    historyPolylinesRef.current.forEach((polyline, key) => {
+      if (!nextKeys.has(key)) {
+        polyline.setMap(null)
+        historyPolylinesRef.current.delete(key)
+      }
+    })
+
+    groupedHistory.forEach((trackPoints, trackId) => {
+      const sorted = [...trackPoints].sort(
+        (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime(),
       )
+      const path = sorted
+        .map((point) => (hasValidCoordinates(point) ? toLatLngLiteral(point) : null))
+        .filter((value): value is LatLngLiteral => !!value)
 
-      if (focus) {
-        map.easeTo({
-          center: [focus.lng, focus.lat],
-          duration: 1000,
+      if (path.length >= 2) {
+        const polyline =
+          historyPolylinesRef.current.get(trackId) ??
+          new googleMaps.Polyline({
+            geodesic: true,
+            strokeColor: '#ff9444',
+            strokeOpacity: 0.4,
+            strokeWeight: 3,
+            zIndex: 2,
+          })
+
+        polyline.setPath(path)
+        polyline.setMap(map)
+        historyPolylinesRef.current.set(trackId, polyline)
+      } else {
+        const polyline = historyPolylinesRef.current.get(trackId)
+        if (polyline) {
+          polyline.setMap(null)
+          historyPolylinesRef.current.delete(trackId)
+        }
+      }
+    })
+
+    historyMarkersRef.current.forEach(({ marker, listeners }) => {
+      listeners.forEach((listener) => listener.remove())
+      marker.setMap(null)
+    })
+    historyMarkersRef.current = []
+
+    const infoWindow =
+      historyInfoWindowRef.current ??
+      new googleMaps.InfoWindow({
+        disableAutoPan: true,
+      })
+
+    historyInfoWindowRef.current = infoWindow
+
+    const entries: HistoryMarkerEntry[] = []
+    history.forEach((point) => {
+      if (!hasValidCoordinates(point)) {
+        return
+      }
+
+      const position = toLatLngLiteral(point)
+      const marker = new googleMaps.Marker({
+        position,
+        map,
+        zIndex: 4,
+        icon: {
+          path: googleMaps.SymbolPath.CIRCLE,
+          fillColor: '#ffb86c',
+          fillOpacity: 0.75,
+          strokeColor: '#fff2e4',
+          strokeOpacity: 1,
+          strokeWeight: 1,
+          scale: 5,
+        },
+      })
+
+      const displayNickname = point.nickname
+        ? escapeHtml(point.nickname)
+        : '投稿老E���E'
+      const timestampLabel = buildTimestampLabel(point.ts)
+
+      const show = () => {
+        const html = `<div class="map-popup"><div class="map-popup__name">${displayNickname}</div>${
+          timestampLabel
+            ? `<div class="map-popup__time">${timestampLabel}</div>`
+            : ''
+        }</div>`
+
+        infoWindow.setContent(html)
+        infoWindow.open({
+          anchor: marker,
+          map,
+          shouldFocus: false,
         })
       }
-    }
 
-    if (map.isStyleLoaded()) {
-      update()
-      return
-    }
+      const hide = () => {
+        infoWindow.close()
+      }
 
-    const handleLoad = () => update()
-    map.once('load', handleLoad)
+      const listeners = [
+        marker.addListener('mouseover', show),
+        marker.addListener('mousemove', show),
+        marker.addListener('mouseout', hide),
+        marker.addListener('click', show),
+      ]
 
-    return () => {
-      map.off('load', handleLoad)
-    }
-  }, [focus, selfPoints])
+      entries.push({ marker, listeners })
+    })
+
+    historyMarkersRef.current = entries
+  }, [history, mapVersion])
 
   useEffect(() => {
     const map = mapRef.current
-    if (!map || focus || !defaultCenter) {
+    if (!map || !focus || !hasValidCoordinates(focus)) {
       return
     }
 
-    const target = [defaultCenter.lng, defaultCenter.lat] as [number, number]
+    map.panTo(toLatLngLiteral(focus))
+    const currentZoom = map.getZoom() ?? 0
+    if (currentZoom < 15) {
+      map.setZoom(15)
+    }
+  }, [focus, mapVersion])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || focus || !normalizedDefaultCenter) {
+      return
+    }
+
+    const target = normalizedDefaultCenter
     const currentCenter = map.getCenter()
+    const currentLat = currentCenter?.lat()
+    const currentLng = currentCenter?.lng()
     if (
-      Math.abs(currentCenter.lng - target[0]) < 1e-6 &&
-      Math.abs(currentCenter.lat - target[1]) < 1e-6
+      typeof currentLat === 'number' &&
+      typeof currentLng === 'number' &&
+      Math.abs(currentLat - target.lat) < 1e-6 &&
+      Math.abs(currentLng - target.lng) < 1e-6
     ) {
       return
     }
 
-    const desiredZoom = Math.max(map.getZoom(), 12)
-
-    const animateToTarget = () => {
-      map.easeTo({
-        center: target,
-        duration: 800,
-        zoom: desiredZoom,
-      })
+    map.panTo(target)
+    const currentZoom = map.getZoom() ?? 0
+    const desiredZoom = Math.max(currentZoom, 12)
+    if (currentZoom < desiredZoom) {
+      map.setZoom(desiredZoom)
     }
-
-    if (map.isStyleLoaded()) {
-      animateToTarget()
-      return
-    }
-
-    map.once('load', animateToTarget)
-    return () => {
-      map.off('load', animateToTarget)
-    }
-  }, [defaultCenter, focus])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) {
-      return
-    }
-
-    const update = () => {
-      ensureSource(map, PEERS_SOURCE, buildPeerCollection(peers))
-    }
-
-    if (map.isStyleLoaded()) {
-      update()
-      return
-    }
-
-    const handleLoad = () => update()
-    map.once('load', handleLoad)
-
-    return () => {
-      map.off('load', handleLoad)
-    }
-  }, [peers])
-
-  useEffect(() => {
-    latestHistoryRef.current = history
-
-    const map = mapRef.current
-    if (!map) {
-      return
-    }
-
-    const update = () => {
-      ensureSource(
-        map,
-        HISTORY_LINE_SOURCE,
-        buildHistoryLineCollection(history),
-      )
-      ensureSource(map, HISTORY_SOURCE, buildHistoryCollection(history))
-    }
-
-    if (map.isStyleLoaded()) {
-      update()
-      return
-    }
-
-    const handleLoad = () => update()
-    map.once('load', handleLoad)
-
-    return () => {
-      map.off('load', handleLoad)
-    }
-  }, [history])
-
-  useEffect(() => {
-    const map = mapRef.current
-    if (!map) {
-      return
-    }
-
-    const showHistoryPopup = (event: maplibregl.MapLayerMouseEvent) => {
-      const feature = event.features?.[0]
-      if (!feature || feature.geometry?.type !== 'Point') {
-        return
-      }
-
-      const coordinates = (
-        feature.geometry.coordinates as number[]
-      ).slice(0, 2) as [number, number]
-      const nickname = feature.properties?.nickname
-      const timestamp = feature.properties?.ts
-
-      const displayNickname = nickname
-        ? escapeHtml(nickname)
-        : '投稿者不明'
-
-      let timestampLabel = ''
-      if (typeof timestamp === 'string') {
-        const parsed = new Date(timestamp)
-        timestampLabel = Number.isNaN(parsed.getTime())
-          ? escapeHtml(timestamp)
-          : escapeHtml(parsed.toLocaleString())
-      }
-
-      const popup =
-        historyPopupRef.current ??
-        new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 12,
-        })
-
-      popup
-        .setLngLat(coordinates)
-        .setHTML(
-          `<div class="map-popup"><div class="map-popup__name">${displayNickname}</div>${
-            timestampLabel
-              ? `<div class="map-popup__time">${timestampLabel}</div>`
-              : ''
-          }</div>`,
-        )
-        .addTo(map)
-
-      historyPopupRef.current = popup
-    }
-
-    const handleMouseEnter = (event: maplibregl.MapLayerMouseEvent) => {
-      map.getCanvas().style.cursor = 'pointer'
-      showHistoryPopup(event)
-    }
-
-    const handleMouseMove = (event: maplibregl.MapLayerMouseEvent) => {
-      showHistoryPopup(event)
-    }
-
-    const handleMouseLeave = () => {
-      map.getCanvas().style.cursor = ''
-      historyPopupRef.current?.remove()
-      historyPopupRef.current = null
-    }
-
-    const handleLoad = () => {
-      map.on('mouseenter', 'history-points', handleMouseEnter)
-      map.on('mousemove', 'history-points', handleMouseMove)
-      map.on('mouseleave', 'history-points', handleMouseLeave)
-      map.on('click', 'history-points', showHistoryPopup)
-    }
-
-    if (map.isStyleLoaded()) {
-      handleLoad()
-    } else {
-      map.on('load', handleLoad)
-    }
-
-    return () => {
-      map.off('load', handleLoad)
-      map.off('mouseenter', 'history-points', handleMouseEnter)
-      map.off('mousemove', 'history-points', handleMouseMove)
-      map.off('mouseleave', 'history-points', handleMouseLeave)
-      map.off('click', 'history-points', showHistoryPopup)
-      map.getCanvas().style.cursor = ''
-      historyPopupRef.current?.remove()
-      historyPopupRef.current = null
-    }
-  }, [])
+  }, [normalizedDefaultCenter, focus, mapVersion])
 
   useEffect(() => {
     if (typeof window === 'undefined' || !containerRef.current) {
@@ -634,13 +539,19 @@ export const MapView = ({
     }
 
     const observer = new ResizeObserver(() => {
-      mapRef.current?.resize()
+      const map = mapRef.current
+      const googleMaps = googleMapsRef.current
+      if (!map || !googleMaps) {
+        return
+      }
+
+      googleMaps.event.trigger(map, 'resize')
     })
 
     observer.observe(containerRef.current)
 
     return () => observer.disconnect()
-  }, [])
+  }, [mapVersion])
 
   return <div className="map-view" ref={containerRef} />
 }
