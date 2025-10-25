@@ -33,7 +33,7 @@ const buildSelfCollection = (
   points: TrackPoint[],
 ): FeatureCollection<LineString> => ({
   type: 'FeatureCollection',
-  features: points.length ? [buildLineFeature(points)] : [],
+  features: points.length >= 2 ? [buildLineFeature(points)] : [],
 })
 
 const buildPointCollection = (
@@ -69,16 +69,19 @@ const buildPeerCollection = (
       return []
     }
 
-    const lineFeature: Feature<LineString> = {
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: points.map((point) => [point.lng, point.lat]),
-      },
-      properties: { trackId, nickname: points[0]?.nickname },
-    }
-
     const lastPoint = points[points.length - 1]
+    const features: Feature<LineString | Point>[] = []
+
+    if (points.length >= 2) {
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: points.map((point) => [point.lng, point.lat]),
+        },
+        properties: { trackId, nickname: points[0]?.nickname },
+      })
+    }
 
     const pointFeature: Feature<Point> = {
       type: 'Feature',
@@ -89,7 +92,9 @@ const buildPeerCollection = (
       properties: { trackId, nickname: lastPoint.nickname },
     }
 
-    return [lineFeature, pointFeature]
+    features.push(pointFeature)
+
+    return features
   }),
 })
 
