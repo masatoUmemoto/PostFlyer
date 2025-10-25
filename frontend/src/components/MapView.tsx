@@ -68,12 +68,12 @@ export const MapView = ({
     } else if (normalizedDefaultCenter) {
       initialCameraRef.current = {
         center: normalizedDefaultCenter,
-        zoom: 12,
+        zoom: 15,
       }
     } else {
       initialCameraRef.current = {
         center: { ...TOYOTASHI_STATION_CENTER },
-        zoom: 12,
+        zoom: 15,
       }
     }
   }
@@ -118,7 +118,7 @@ export const MapView = ({
         const camera =
           initialCameraRef.current ?? {
             center: { ...TOYOTASHI_STATION_CENTER },
-            zoom: 12,
+            zoom: 15,
           }
 
         const map = new google.maps.Map(containerRef.current, {
@@ -180,7 +180,7 @@ export const MapView = ({
           geodesic: true,
           strokeColor: '#ff7a1a',
           strokeOpacity: 0.45,
-          strokeWeight: 8,
+          strokeWeight: 16,
           zIndex: 5,
         })
 
@@ -254,7 +254,7 @@ export const MapView = ({
             geodesic: true,
             strokeColor: '#ffae55',
             strokeOpacity: 0.35,
-            strokeWeight: 4,
+            strokeWeight: 8,
             zIndex: 3,
             icons: [
               {
@@ -262,7 +262,7 @@ export const MapView = ({
                   path: 'M 0,-1 0,1',
                   strokeOpacity: 1,
                   strokeColor: '#ffae55',
-                  strokeWeight: 2,
+                  strokeWeight: 4,
                 },
                 offset: '0',
                 repeat: '16px',
@@ -361,7 +361,7 @@ export const MapView = ({
             geodesic: true,
             strokeColor: '#ff9444',
             strokeOpacity: 0.4,
-            strokeWeight: 3,
+            strokeWeight: 6,
             zIndex: 2,
           })
 
@@ -413,7 +413,7 @@ export const MapView = ({
 
     map.panTo(target)
     const currentZoom = map.getZoom() ?? 0
-    const desiredZoom = Math.max(currentZoom, 12)
+    const desiredZoom = Math.max(currentZoom, 15)
     if (currentZoom < desiredZoom) {
       map.setZoom(desiredZoom)
     }
