@@ -1,4 +1,4 @@
-# PostFlyers
+﻿# PostFlyers
 
 PostFlyers は、AWS Amplify (AppSync + Cognito Identity Pool + DynamoDB) を基盤にした匿名位置共有アプリです。React 19 + Vite 7 製の PWA から簡単にセッションを開始し、GPS ポイントをクラウドへ送信し、参加者同士の移動を MapLibre 上で可視化できます。
 
@@ -72,5 +72,3 @@ PostFlyers は、AWS Amplify (AppSync + Cognito Identity Pool + DynamoDB) を基
 - マップのベーススタイルは CARTO Positron を利用しています。外部スタイル URL が許可されていない環境では地図が表示されません。
 - 長時間の位置取得ではブラウザ・端末のバックグラウンド制限により測位間隔が延びる場合があります。
 
-## ライセンス
-- (未定義。利用ポリシーに応じて追記してください。)

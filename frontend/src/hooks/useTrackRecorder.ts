@@ -346,6 +346,47 @@ export const useTrackRecorder = ({
     return () => window.removeEventListener('online', handleOnline)
   }, [flushNow])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const flushPending = () => {
+      if (!bufferRef.current.length && !isFlushingRef.current) {
+        return
+      }
+      void flushNow()
+    }
+
+    const handlePageHide = () => {
+      flushPending()
+    }
+
+    const handleBeforeUnload = () => {
+      flushPending()
+    }
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+        flushPending()
+      }
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
+    }
+  }, [flushNow])
+
   return {
     points,
     isTracking,

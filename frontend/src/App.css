@@ -277,6 +277,15 @@
   font-size: 0.9rem;
 }
 
+.status__warning {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 224, 149, 0.35);
+  border-radius: 0.75rem;
+  color: #8a5a04;
+  font-size: 0.9rem;
+}
+
 .status__error {
   margin: 0;
   padding: 0.65rem 0.75rem;

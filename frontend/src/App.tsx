@@ -24,6 +24,9 @@ const SLOW_SYNC_INTERVAL_MS = 60000
 const UNKNOWN_NICKNAME = '投稿者不明'
 const LAST_LOCATION_KEY = 'flyers:lastLocation'
 
+let inMemorySession: Session | null = null
+let inMemoryDeviceId: string | null = null
+
 type LatLng = { lat: number; lng: number }
 
 const normalizeNickname = (nickname?: string | null) => {
@@ -57,34 +60,67 @@ const toDateLocal = (date: Date) => {
 }
 
 const parseStoredSession = (): Session | null => {
+  if (typeof window === 'undefined') {
+    return inMemorySession
+  }
+
   try {
-    const raw = localStorage.getItem(SESSION_KEY)
+    const raw = window.localStorage.getItem(SESSION_KEY)
     if (!raw) {
-      return null
+      return inMemorySession
     }
     return JSON.parse(raw) as Session
   } catch (error) {
-    console.warn('Failed to parse stored session', error)
-    return null
+    console.warn('Failed to read stored session', error)
+    return inMemorySession
   }
 }
 
-const persistSession = (session: Session | null) => {
-  if (!session) {
-    localStorage.removeItem(SESSION_KEY)
-    return
+const persistSession = (session: Session | null): boolean => {
+  inMemorySession = session
+
+  if (typeof window === 'undefined') {
+    return true
   }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+
+  try {
+    if (!session) {
+      window.localStorage.removeItem(SESSION_KEY)
+    } else {
+      window.localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    }
+    return true
+  } catch (error) {
+    console.warn('Failed to persist session', error)
+    return false
+  }
 }
 
 const loadDeviceId = () => {
-  const existing = localStorage.getItem(DEVICE_ID_KEY)
-  if (existing) {
-    return existing
+  if (inMemoryDeviceId) {
+    return inMemoryDeviceId
   }
-  const next = uuid()
-  localStorage.setItem(DEVICE_ID_KEY, next)
-  return next
+
+  if (typeof window === 'undefined') {
+    inMemoryDeviceId = uuid()
+    return inMemoryDeviceId
+  }
+
+  try {
+    const existing = window.localStorage.getItem(DEVICE_ID_KEY)
+    if (existing) {
+      inMemoryDeviceId = existing
+      return existing
+    }
+    const next = uuid()
+    window.localStorage.setItem(DEVICE_ID_KEY, next)
+    inMemoryDeviceId = next
+    return next
+  } catch (error) {
+    console.warn('Failed to access device ID storage', error)
+    inMemoryDeviceId = inMemoryDeviceId ?? uuid()
+    return inMemoryDeviceId
+  }
 }
 
 const isSessionActive = (session: Session | null) =>
@@ -105,6 +141,7 @@ function App() {
   const [nickname, setNickname] = useState('')
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [storageWarning, setStorageWarning] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isEnding, setIsEnding] = useState(false)
   const [historyPoints, setHistoryPoints] = useState<TrackPoint[]>([])
@@ -391,7 +428,14 @@ function App() {
   })
 
   useEffect(() => {
-    persistSession(session)
+    const persisted = persistSession(session)
+    if (!persisted && session) {
+      setStorageWarning(
+        'ブラウザの設定によりセッション情報を保存できませんでした。タブを閉じると再参加が必要になります。',
+      )
+    } else if (persisted) {
+      setStorageWarning(null)
+    }
   }, [session])
 
   useEffect(() => {
@@ -894,6 +938,11 @@ function App() {
           <div className="status">
             {statusMessage ? (
               <p className="status__message">{statusMessage}</p>
+            ) : null}
+            {storageWarning ? (
+              <p className="status__warning" role="status">
+                {storageWarning}
+              </p>
             ) : null}
             {errorMessage ? (
               <p className="status__error">{errorMessage}</p>
