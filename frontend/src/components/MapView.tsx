@@ -223,30 +223,42 @@ export const MapView = ({
   const mapRef = useRef<MaplibreMap | null>(null)
   const latestHistoryRef = useRef<TrackPoint[]>([])
   const historyPopupRef = useRef<maplibregl.Popup | null>(null)
+  const initialCameraRef = useRef<{ center: [number, number]; zoom: number } | null>(
+    null,
+  )
+
+  if (!initialCameraRef.current) {
+    if (focus) {
+      initialCameraRef.current = {
+        center: [focus.lng, focus.lat] as [number, number],
+        zoom: 15,
+      }
+    } else if (defaultCenter) {
+      initialCameraRef.current = {
+        center: [defaultCenter.lng, defaultCenter.lat] as [number, number],
+        zoom: 12,
+      }
+    } else {
+      initialCameraRef.current = {
+        center: [0, 0] as [number, number],
+        zoom: 2,
+      }
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
       return
     }
 
-    let initialCenter: [number, number]
-    let initialZoom: number
-    if (focus) {
-      initialCenter = [focus.lng, focus.lat]
-      initialZoom = 15
-    } else if (defaultCenter) {
-      initialCenter = [defaultCenter.lng, defaultCenter.lat]
-      initialZoom = 12
-    } else {
-      initialCenter = [0, 0]
-      initialZoom = 2
-    }
+    const initialCamera =
+      initialCameraRef.current ?? { center: [0, 0] as [number, number], zoom: 2 }
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-      center: initialCenter,
-      zoom: initialZoom,
+      center: initialCamera.center,
+      zoom: initialCamera.zoom,
       maxZoom: 19,
       pitch: 0,
       dragRotate: false,
@@ -388,7 +400,7 @@ export const MapView = ({
       map.remove()
       mapRef.current = null
     }
-  }, [defaultCenter, focus])
+  }, [])
 
   useEffect(() => {
     const map = mapRef.current
