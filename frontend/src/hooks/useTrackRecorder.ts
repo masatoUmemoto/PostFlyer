@@ -42,7 +42,7 @@ export interface TrackRecorderState {
   lastSyncAt?: number
   start: () => Promise<void>
   stop: () => void
-  flushNow: () => Promise<void>
+  flushNow: () => Promise<boolean>
   movementState: 'slow' | 'fast'
   flushIntervalMs: number
   speedMps: number | null
@@ -62,6 +62,7 @@ export const useTrackRecorder = ({
   const bufferRef = useRef<TrackPointInput[]>([])
   const watchIdRef = useRef<number | null>(null)
   const isFlushingRef = useRef(false)
+  const flushPromiseRef = useRef<Promise<boolean> | null>(null)
   const lastPositionRef = useRef<GeolocationPosition | null>(null)
   const lastRecordedPointRef = useRef<TrackPoint | null>(null)
 
@@ -95,36 +96,48 @@ export const useTrackRecorder = ({
     }
   }, [session, resetRecorder, stopWatch])
 
-  const flushNow = useCallback(async () => {
-    if (!session || isFlushingRef.current) {
-      return
+  const flushNow = useCallback(async (): Promise<boolean> => {
+    if (flushPromiseRef.current) {
+      return flushPromiseRef.current
+    }
+
+    if (!session) {
+      return bufferRef.current.length === 0
     }
 
     const pending = bufferRef.current
     if (!pending.length) {
-      return
+      return true
     }
 
-    if (!navigator.onLine) {
-      return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return false
     }
 
     const toFlush = [...pending]
     bufferRef.current = []
-
     isFlushingRef.current = true
-    try {
-      await putTrackPoints(toFlush)
-      if (toFlush.length) {
-        setLastSyncAt(Date.now())
+
+    const promise = (async () => {
+      try {
+        await putTrackPoints(toFlush)
+        if (toFlush.length) {
+          setLastSyncAt(Date.now())
+        }
+        return true
+      } catch (error) {
+        console.error('[track-recorder] flush failed', error)
+        bufferRef.current = [...toFlush, ...bufferRef.current]
+        onError?.('位置情報の送信に失敗しました。通信状況を確認してください。')
+        return false
+      } finally {
+        isFlushingRef.current = false
+        flushPromiseRef.current = null
       }
-    } catch (error) {
-      console.error('[track-recorder] flush failed', error)
-      bufferRef.current = [...toFlush, ...bufferRef.current]
-      onError?.('位置情報の送信に失敗しました。通信状況を確認してください。')
-    } finally {
-      isFlushingRef.current = false
-    }
+    })()
+
+    flushPromiseRef.current = promise
+    return promise
   }, [onError, session])
 
   const applySpeedMeasurement = useCallback((speed: number | null) => {

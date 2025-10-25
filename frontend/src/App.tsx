@@ -348,6 +348,7 @@ function App() {
     points: selfPoints,
     isTracking,
     lastSyncAt,
+    start: startRecorder,
     stop: stopRecorder,
     flushNow,
     movementState,
@@ -478,7 +479,14 @@ function App() {
     setErrorMessage(null)
     try {
       stopRecorder()
-      await flushNow()
+      const flushed = await flushNow()
+      if (!flushed) {
+        setErrorMessage('位置データを同期できませんでした。オンラインに接続してから再度お試しください。')
+        await startRecorder().catch((error) => {
+          console.error('Failed to resume tracking after flush failure', error)
+        })
+        return
+      }
       const ended = await endSessionMutation({
         sessionId: activeSession.sessionId,
         endedAt: new Date().toISOString(),
@@ -491,7 +499,7 @@ function App() {
     } finally {
       setIsEnding(false)
     }
-  }, [activeSession, flushNow, stopRecorder])
+  }, [activeSession, flushNow, startRecorder, stopRecorder])
 
   const loadHistory = useCallback(async () => {
     if (!historyStart || !historyEnd) {
