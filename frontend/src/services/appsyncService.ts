@@ -21,6 +21,23 @@ import type {
 
 const MAX_PAGE_SIZE = 1000
 
+export class TrackPointBatchError extends Error {
+  readonly completed: TrackPoint[]
+  readonly pending: TrackPointInput[]
+
+  constructor(
+    message: string,
+    completed: TrackPoint[],
+    pending: TrackPointInput[],
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+    this.name = 'TrackPointBatchError'
+    this.completed = completed
+    this.pending = pending
+  }
+}
+
 const unwrap = <T extends Record<string, unknown>, K extends keyof T>(
   result: GraphQLResult<T>,
   key: K,
@@ -84,14 +101,25 @@ export const putTrackPoints = async (items: TrackPointInput[]) => {
   const client = await getGraphQLClient()
   const saved: TrackPoint[] = []
 
-  for (const item of items) {
-    const result = (await client.graphql({
-      query: createTrackPointMutation,
-      variables: { input: item },
-      authMode: 'iam',
-    })) as GraphQLResult<{ createTrackPoint: TrackPoint }>
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index]
+    try {
+      const result = (await client.graphql({
+        query: createTrackPointMutation,
+        variables: { input: item },
+        authMode: 'iam',
+      })) as GraphQLResult<{ createTrackPoint: TrackPoint }>
 
-    saved.push(unwrap(result, 'createTrackPoint'))
+      saved.push(unwrap(result, 'createTrackPoint'))
+    } catch (error) {
+      const pending = items.slice(index)
+      throw new TrackPointBatchError(
+        'Failed to persist all track points',
+        [...saved],
+        pending,
+        { cause: error },
+      )
+    }
   }
 
   return saved

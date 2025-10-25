@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { v4 as uuid } from 'uuid'
 import type { Session, TrackPoint, TrackPointInput } from '../amplify/types'
-import { putTrackPoints } from '../services/appsyncService'
+import { putTrackPoints, TrackPointBatchError } from '../services/appsyncService'
 
 const FAST_FLUSH_INTERVAL_MS = 15000
 const SLOW_FLUSH_INTERVAL_MS = 60000
@@ -127,7 +127,17 @@ export const useTrackRecorder = ({
         return true
       } catch (error) {
         console.error('[track-recorder] flush failed', error)
-        bufferRef.current = [...toFlush, ...bufferRef.current]
+        const pending =
+          error instanceof TrackPointBatchError ? error.pending : toFlush
+        if (
+          error instanceof TrackPointBatchError &&
+          error.completed.length > 0
+        ) {
+          setLastSyncAt(Date.now())
+        }
+        if (pending.length) {
+          bufferRef.current = [...pending, ...bufferRef.current]
+        }
         onError?.('位置情報の送信に失敗しました。通信状況を確認してください。')
         return false
       } finally {
