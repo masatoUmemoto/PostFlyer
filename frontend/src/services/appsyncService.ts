@@ -19,6 +19,8 @@ import type {
   TrackPointInput,
 } from '../amplify/types'
 
+const MAX_PAGE_SIZE = 1000
+
 const unwrap = <T extends Record<string, unknown>, K extends keyof T>(
   result: GraphQLResult<T>,
   key: K,
@@ -100,25 +102,72 @@ export const listTrackPointsByTime = async (
 ) => {
   const client = await getGraphQLClient()
 
+  const { start, end, limit, nextToken: initialNextToken } = variables
   const filter = {
     ts: {
-      between: [variables.start, variables.end],
+      between: [start, end],
     },
   }
 
-  const result = (await client.graphql({
-    query: listTrackPointsByTimeQuery,
-    variables: {
-      filter,
-      limit: variables.limit,
-      nextToken: variables.nextToken,
-    },
-    authMode: 'iam',
-  })) as GraphQLResult<
-    Record<string, { items?: (TrackPoint | null)[] | null } | null>
-  >
+  const items: TrackPoint[] = []
+  let nextToken: string | undefined | null = initialNextToken ?? undefined
+  let remaining =
+    typeof limit === 'number' && Number.isFinite(limit) ? limit : undefined
 
-  return unwrapConnectionItems(result, 'listTrackPointsByTime')
+  do {
+    if (remaining !== undefined && remaining <= 0) {
+      break
+    }
+
+    const pageLimit =
+      remaining !== undefined
+        ? Math.min(Math.max(remaining, 1), MAX_PAGE_SIZE)
+        : MAX_PAGE_SIZE
+
+    const result = (await client.graphql({
+      query: listTrackPointsByTimeQuery,
+      variables: {
+        filter,
+        limit: pageLimit,
+        nextToken,
+      },
+      authMode: 'iam',
+    })) as GraphQLResult<{
+      listTrackPointsByTime?: {
+        items?: (TrackPoint | null)[] | null
+        nextToken?: string | null
+      } | null
+    }>
+
+    if (result.errors?.length) {
+      throw new Error(result.errors.map((error) => error.message).join('; '))
+    }
+
+    const connection = result.data?.listTrackPointsByTime
+    if (!connection || typeof connection !== 'object') {
+      throw new Error('Unexpected empty GraphQL connection response')
+    }
+
+    const pageItems = (connection.items ?? []).filter(
+      Boolean,
+    ) as TrackPoint[]
+    items.push(...pageItems)
+
+    if (remaining !== undefined) {
+      remaining -= pageItems.length
+      if (remaining <= 0) {
+        break
+      }
+    }
+
+    nextToken = connection.nextToken ?? undefined
+
+    if (!nextToken || pageItems.length === 0) {
+      break
+    }
+  } while (true)
+
+  return items
 }
 
 export const listTrackPoints = async (variables: ListTrackPointsVariables) => {
